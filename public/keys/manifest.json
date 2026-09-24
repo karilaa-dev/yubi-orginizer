@@ -1,0 +1,122 @@
+{
+  "version": 1,
+  "purpose": "Display references only. Never combine these meshes with printable exports.",
+  "units": "millimeters",
+  "coordinates": "X centered; Y follows the original nominal silhouette from 0 to key length; Z centered on thickness.",
+  "materials": {
+    "body": "dark polymer",
+    "connector": "dark polymer for A and AN; silver metal for C, CN, CK, and CI",
+    "touch": "gold touch contacts and exposed pads"
+  },
+  "generator": "@lofcz/openscad-wasm@0.0.2 with Manifold",
+  "assets": [
+    {
+      "file": "A-body.stl",
+      "sha256": "56a3105dce6cdbd5441c442fa4fff8b2e7331bba1213ba4e0a925b5ba604e87e",
+      "triangles": 976,
+      "bytes": 48884
+    },
+    {
+      "file": "A-connector.stl",
+      "sha256": "7ab95b88e17ef7e6e76d3f286e66fc7d5ca00a570cfa98a9f60bc38a1a3dcb62",
+      "triangles": 52,
+      "bytes": 2684
+    },
+    {
+      "file": "A-touch.stl",
+      "sha256": "f1cc531a364695cf4f6295b12ab8aa6d8f776eebc19ea524f1f9194715bd66c8",
+      "triangles": 2716,
+      "bytes": 135884
+    },
+    {
+      "file": "C-body.stl",
+      "sha256": "52570e61c87c39a7d9ac851eb3b48a5f4eee2556a304a42e0a56e023f6e5397e",
+      "triangles": 984,
+      "bytes": 49284
+    },
+    {
+      "file": "C-connector.stl",
+      "sha256": "ee5cf1195740c296d56d7e6e76dc56ca4fdfbdaa540d2ee6ff2620038d79b2dc",
+      "triangles": 796,
+      "bytes": 39884
+    },
+    {
+      "file": "C-touch.stl",
+      "sha256": "9fa95dca1eba52e5fd3ac248ee1e1de7daf78c151a32f96f31920eb35c32d34f",
+      "triangles": 2668,
+      "bytes": 133484
+    },
+    {
+      "file": "AN-body.stl",
+      "sha256": "d6ebbe24018a585318b3665eade00397c613f8d1612679338203e8ad7fd1341d",
+      "triangles": 588,
+      "bytes": 29484
+    },
+    {
+      "file": "AN-connector.stl",
+      "sha256": "8806fe32f7806d718d3788ef284230a49cc3f0b6ffdf510b8a7d187a807e8073",
+      "triangles": 68,
+      "bytes": 3484
+    },
+    {
+      "file": "AN-touch.stl",
+      "sha256": "aba4d349178efb5a279a66b214a15aee7e3d9da18c67fd3fe8ca6739e1a2aa96",
+      "triangles": 620,
+      "bytes": 31084
+    },
+    {
+      "file": "CN-body.stl",
+      "sha256": "4fb33398f398bb7c99dc54799af98ab710ece8cdaa7a152a98ad114b72f49d4e",
+      "triangles": 72,
+      "bytes": 3684
+    },
+    {
+      "file": "CN-connector.stl",
+      "sha256": "c4c2d3637ff11754fc8c242c8f5f293a6d24f41a5f3dd8be654cc1bf4de9d8cb",
+      "triangles": 796,
+      "bytes": 39884
+    },
+    {
+      "file": "CN-touch.stl",
+      "sha256": "4a0b0d2a7087cf343e7b7999e26c76d6b7a467bb65a7ca438a8e63b61f892a19",
+      "triangles": 396,
+      "bytes": 19884
+    },
+    {
+      "file": "CK-body.stl",
+      "sha256": "529225974ef544a62618727f13152adeb2df59da6be8c5b97496b14d8187a8fa",
+      "triangles": 800,
+      "bytes": 40084
+    },
+    {
+      "file": "CK-connector.stl",
+      "sha256": "4f66c7802bb90d611fc083eadaffd873e4a23598814a5a03ab033d1f9d124508",
+      "triangles": 796,
+      "bytes": 39884
+    },
+    {
+      "file": "CK-touch.stl",
+      "sha256": "23ffca5d3d25f99f023e21e8b1f640b9b7ea669205a46264a7cc48d7c52d3577",
+      "triangles": 2184,
+      "bytes": 109284
+    },
+    {
+      "file": "CI-body.stl",
+      "sha256": "fee94399ea378761cea0c9a6c6f15da1abfb53f7d87350337852da93c05e9ce9",
+      "triangles": 568,
+      "bytes": 28484
+    },
+    {
+      "file": "CI-connector.stl",
+      "sha256": "c70556a6d376def7ade8ad380377de5eb99e2767fea2574cd3fbba138293e9cd",
+      "triangles": 888,
+      "bytes": 44484
+    },
+    {
+      "file": "CI-touch.stl",
+      "sha256": "37112e34fdb87000b380df4b43fb8bb413f283077fd247eabb0756ea068db1a6",
+      "triangles": 2376,
+      "bytes": 118884
+    }
+  ]
+}

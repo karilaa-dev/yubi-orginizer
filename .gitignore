@@ -1,0 +1,26 @@
+# Dependencies and production output
+node_modules/
+dist/
+
+# Generated validation reports, exports, historical prototypes and local fixtures
+/artifacts/
+/.validation/
+/result.json
+coverage/
+*.log
+*.tsbuildinfo
+__pycache__/
+*.py[cod]
+.venv/
+
+# Local settings and credentials
+.env
+.env.*
+!.env.example
+*.local
+
+# Editor and OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

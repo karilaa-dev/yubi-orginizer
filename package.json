@@ -1,0 +1,37 @@
+{
+  "name": "yubikey-organizer",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "vitest run",
+    "test:geometry": "node --import tsx scripts/validate-geometry.ts",
+    "build:keys": "node --import tsx scripts/build-reference-meshes.ts",
+    "build:icons": "node --import tsx scripts/build-icons.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm test",
+    "export:snap-sample": "node --import tsx scripts/export-tray-snap-sample.ts"
+  },
+  "dependencies": {
+    "@lofcz/openscad-wasm": "0.0.2",
+    "fflate": "^0.8.2",
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "@types/node": "^24.0.0",
+    "@types/three": "^0.180.0",
+    "tsx": "^4.20.0",
+    "typescript": "~5.9.3",
+    "vite": "^7.3.0",
+    "vite-plugin-pwa": "^1.2.0",
+    "vitest": "^4.1.11"
+  },
+  "description": "Design and export printable YubiKey organizers locally in your browser.",
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

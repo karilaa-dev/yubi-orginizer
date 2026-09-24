@@ -1,0 +1,68 @@
+import { describe, expect, it } from 'vitest';
+import { unzipSync, strFromU8 } from 'fflate';
+import { build3mf, THREE_MF_PRINT_SETTINGS } from '../src/three-mf';
+import type { PartSpec, ProjectGeometry } from '../src/types';
+
+function tetrahedron(z = 0): ArrayBuffer {
+  const points = [[0, 0, z], [2, 0, z], [0, 2, z], [0, 0, z + 2]];
+  const faces = [[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]];
+  const buffer = new ArrayBuffer(84 + faces.length * 50);
+  const data = new DataView(buffer);
+  data.setUint32(80, faces.length, true);
+  faces.forEach((face, t) => face.forEach((vertex, i) => points[vertex].forEach((coordinate, axis) => data.setFloat32(84 + t * 50 + 12 + i * 12 + axis * 4, coordinate, true))));
+  return buffer;
+}
+function part(id: string, name = id): PartSpec {
+  return { id, name, scad: '', position: [0, 0, 50], rotation: [Math.PI, 0, 0], explode: [0, 0, 10], color: '#ffffff' };
+}
+function project(parts: PartSpec[]): ProjectGeometry { return { parts, keys: [], dimensions: [10, 10, 10] }; }
+const text = (entries: Record<string, Uint8Array>, name: string) => strFromU8(entries[name]);
+
+describe('3MF export', () => {
+  it('creates a standard millimeter package with welded vertices and scoped Bambu/Orca settings', () => {
+    const result = unzipSync(build3mf(project([part('base', 'A & "B" <test>')]), new Map([['base', tetrahedron()]])));
+    const model = text(result, '3D/3dmodel.model');
+    expect(model).toContain('unit="millimeter"');
+    expect(model.match(/<vertex /g)).toHaveLength(4);
+    expect(model.match(/<triangle /g)).toHaveLength(4);
+    expect(model).toContain('A &amp; &quot;B&quot; &lt;test&gt;');
+    expect(text(result, '_rels/.rels')).toContain('Target="/3D/3dmodel.model"');
+    expect(JSON.parse(text(result, 'Metadata/project_settings.config'))).toEqual(THREE_MF_PRINT_SETTINGS);
+    expect(text(result, 'Metadata/model_settings.config')).toContain('key="sparse_infill_density" value="5%"');
+    expect(text(result, 'Metadata/model_settings.config')).toContain('key="wall_generator" value="arachne"');
+    expect(Object.keys(result).some((name) => name.includes('gcode'))).toBe(false);
+    expect(text(result, 'Metadata/project_settings.config')).not.toMatch(/printer|filament|nozzle|temperature/);
+  });
+  it('lays parts flat at zero with non-overlapping build translations instead of assembly poses', () => {
+    const entries = unzipSync(build3mf(project([part('a'), part('b')]), new Map([['a', tetrahedron(7)], ['b', tetrahedron(12)]])));
+    const model = text(entries, '3D/3dmodel.model');
+    const objects = [...model.matchAll(/<object[^>]*>([\s\S]*?)<\/object>/g)];
+    for (const object of objects) {
+      const z = [...object[1].matchAll(/<vertex[^>]* z="([^"]+)"/g)].map((match) => Number(match[1]));
+      expect(Math.min(...z)).toBe(0);
+      expect(Math.max(...z)).toBe(2);
+    }
+    const transforms = [...model.matchAll(/<item[^>]*transform="([^"]+)"/g)].map((match) => match[1].split(' ').map(Number));
+    expect(transforms).toHaveLength(2);
+    expect(transforms.every((matrix) => matrix.slice(0, 9).join(' ') === '1 0 0 0 1 0 0 0 1' && matrix[11] === 0)).toBe(true);
+    const dx = Math.abs(transforms[0][9] - transforms[1][9]);
+    const dy = Math.abs(transforms[0][10] - transforms[1][10]);
+    expect(dx >= 12 || dy >= 12).toBe(true);
+  });
+  it('exports the selected part only and does not require other unfinished meshes', () => {
+    const entries = unzipSync(build3mf(project([part('a'), part('b')]), new Map([['b', tetrahedron()]]), { partId: 'b' }));
+    expect(text(entries, '3D/3dmodel.model').match(/<object /g)).toHaveLength(1);
+    expect(text(entries, '3D/3dmodel.model')).toContain('name="b"');
+  });
+  it('rejects unfinished, invalid, or missing models and produces reproducible bytes', () => {
+    const input = project([part('a')]);
+    expect(() => build3mf(input, new Map())).toThrow('not ready');
+    expect(() => build3mf(input, new Map(), { partId: 'missing' })).toThrow('does not exist');
+    expect(() => build3mf(project([]), new Map())).toThrow('Add keys');
+    expect(() => build3mf(input, new Map([['a', new ArrayBuffer(20)]]))).toThrow('incomplete');
+    const meshes = new Map([['a', tetrahedron()]]);
+    const before = structuredClone(input);
+    expect(build3mf(input, meshes)).toEqual(build3mf(input, meshes));
+    expect(input).toEqual(before);
+  });
+});
