@@ -3,7 +3,7 @@ import { defaultConfig, parseConfig, serializeConfig, validateConfig } from '../
 import { buildProject } from '../src/geometry';
 
 describe('retired tray connection migration', () => {
-  it.each(['stackable', 'slide_lock'])('replaces %s with the enclosure snap while preserving layout and source records', connection => {
+  it.each(['stackable', 'slide_lock'])('restores %s deliberately while preserving layout and source records', connection => {
     for (const lockStyle of [undefined, 'button', 'side_clips', 'captive_button']) {
       const old = JSON.parse(JSON.stringify(defaultConfig()));
       old.template = 'inventory_tray';
@@ -15,12 +15,12 @@ describe('retired tray connection migration', () => {
       const before = structuredClone(old);
       const restored = parseConfig(JSON.stringify(old));
       const { lockStyle: _retired, ...tray } = old.options.tray;
-      expect(restored).toEqual({ ...old, options: { ...old.options, tray: { ...tray, connection: 'snap_fit' } } });
+      expect(restored).toEqual({ ...old, options: { ...old.options, tray: { ...tray, connection: connection === 'slide_lock' ? 'snap_fit' : 'stackable' } } });
       expect(old).toEqual(before);
       expect(parseConfig(serializeConfig(restored))).toEqual(restored);
       const project = buildProject(restored);
       expect(project.parts.map(p => p.id)).toEqual(['tray', 'tray-lid']);
-      expect(project.parts[0].scad.trim().split('\n').at(-1)).toMatch(/^inventory_tray_snap\(/);
+      expect(project.parts[0].scad.trim().split('\n').at(-1)).toMatch(connection === 'slide_lock' ? /^inventory_tray_snap\(/ : /^inventory_tray\(/);
       expect(project.parts.every(p => !/tray_captive|tray_slide|tray_clips/.test(p.scad))).toBe(true);
     }
   });

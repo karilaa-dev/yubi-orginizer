@@ -37,7 +37,7 @@ export function defaultConfig(): HolderConfig {
     options: {
       dock: { columns: 0, spacing: 26, rowSpacing: 45, edgeMargin: 18, depthMargin: 22.5, height: 13, title: 'KEY DOCK' },
       rail: { mountingHoles: true, endMargin: 5 },
-      tray: { columns: 0, spacing: 27, rowSpacing: 76, rowGap: 4, margin: 5, height: 8.6, scoop: 'default', retention: true, connection: 'none', sideText: '', lid: false, lidText: '', lidTextSize: 6, lidTextPercent: 100, lidTextRotation: 0, footprint: null },
+      tray: { columns: 0, spacing: 27, rowSpacing: 76, rowGap: 4, margin: 5, height: 8.6, scoop: 'default', retention: true, connection: 'none', slideDirection: 'left', sideText: '', lid: false, lidStyle: 'regular', lidText: '', lidTextSize: 6, lidTextPercent: 100, lidTextRotation: 0, footprint: null },
       grid: { mode: 'mixed', extraHeight: 0 },
       case: { headroom: 0, title: 'SECURITY KEYS' },
       tester: { profile: 'C', startOffset: -0.1, step: 0.1, samples: 3 },
@@ -79,13 +79,14 @@ export function validateConfig(value: unknown): HolderConfig {
   const footprint = t.footprint == null ? null : object(t.footprint, 'Locked tray dimensions');
   const rotation = t.lidTextRotation === undefined ? undefined : number(t.lidTextRotation, 'Lid text rotation', 0, 270, true);
   if (rotation !== undefined && rotation % 90 !== 0) throw new Error('Lid text rotation must be 0, 90, 180, or 270 degrees.');
-  // Preserve enabled connections from retired projects using the current joint.
+  // Keep each supported interface distinct. Retired actuated locks retain the
+  // established snap-fit migration; never silently convert a saved joint to H20.
   const oldStackable = t.stackable === undefined ? false : bool(t.stackable, 'Stackable tray');
   const oldLocking = t.locking === undefined ? false : bool(t.locking, 'Tray locking');
   const oldConnection = t.connection === undefined
     ? (oldStackable || (oldLocking && t.lid === true) ? 'snap_fit' : 'none')
-    : choice(t.connection, ['none', 'stackable', 'slide_lock', 'snap_fit'], 'Tray connection');
-  const connection = oldConnection === 'none' ? 'none' : 'snap_fit';
+    : choice(t.connection, ['none', 'stackable', 'slide_lock', 'snap_fit', 'h20_slide_v7'], 'Tray connection');
+  const connection = oldConnection === 'slide_lock' ? 'snap_fit' : oldConnection;
   if (t.lockStyle !== undefined) choice(t.lockStyle, ['button', 'side_clips', 'captive_button'], 'Tray lock mechanism');
   const g = object(o.grid, 'Grid options');
   const k = object(o.case, 'Case options');
@@ -122,8 +123,10 @@ export function validateConfig(value: unknown): HolderConfig {
         scoop: choice(t.scoop, ['small', 'default', 'large'], 'Finger scoop'),
         retention: bool(t.retention === undefined ? true : t.retention, 'Key retention'),
         connection,
+        slideDirection: choice(t.slideDirection === undefined ? 'left' : t.slideDirection, ['left', 'right', 'front', 'back'], 'Slide-lock direction'),
         sideText: validateText(t.sideText === undefined ? '' : t.sideText, 'Side text', 32),
         lid: bool(t.lid === undefined ? false : t.lid, 'Tray lid'),
+        lidStyle: choice(t.lidStyle === undefined ? 'regular' : t.lidStyle, ['regular', 'minimal'], 'Tray lid style'),
         lidText: validateText(t.lidText === undefined ? '' : t.lidText, 'Tray lid text', 32),
         lidTextSize: number(t.lidTextSize === undefined ? 6 : t.lidTextSize, 'Tray lid text size', 2, 100),
         // Keep legacy millimeter sizing until the renderer reports its exact
@@ -139,7 +142,7 @@ export function validateConfig(value: unknown): HolderConfig {
         startOffset: number(tester.startOffset, 'First fit offset', -0.3, 0.3),
         step: number(tester.step, 'Fit offset step', 0.05, 0.2), samples,
       },
-      interfaceTests: { kind: choice(interfaces.kind === 'tray_lock' || interfaces.kind === 'tray_clips' || interfaces.kind === 'tray_captive' ? 'tray_snap' : interfaces.kind, ['all', 'rail', 'lid', 'grid', 'tray_snap'], 'Mechanical test') },
+      interfaceTests: { kind: choice(interfaces.kind === 'tray_lock' || interfaces.kind === 'tray_clips' || interfaces.kind === 'tray_captive' ? 'tray_snap' : interfaces.kind, ['all', 'rail', 'lid', 'grid', 'tray_snap', 'tray_h20'], 'Mechanical test') },
     },
   };
 }

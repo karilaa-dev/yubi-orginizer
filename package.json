@@ -13,6 +13,7 @@
     "build:icons": "node --import tsx scripts/build-icons.ts",
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm test",
+    "validate:h20": "node --import tsx scripts/validate-tray-h20.ts",
     "export:snap-sample": "node --import tsx scripts/export-tray-snap-sample.ts"
   },
   "dependencies": {

@@ -28,6 +28,7 @@ node --import tsx scripts/validate-3mf.ts
 node --import tsx scripts/validate-fit-tools.ts
 node --import tsx scripts/validate-tray-snap.ts
 node --import tsx scripts/validate-tray-sizing.ts
+npm run validate:h20
 ```
 
 Focused checks:

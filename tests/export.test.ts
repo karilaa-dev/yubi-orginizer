@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { strFromU8, unzipSync } from 'fflate';
 import { defaultConfig, parseConfig, serializeConfig } from '../src/config';
-import { buildPackage, trayConnectionInstructions, TRAY_SNAP_INSTRUCTIONS, type DownloadReadyDetail } from '../src/export';
+import { buildPackage, trayConnectionInstructions, TRAY_SNAP_INSTRUCTIONS, TRAY_H20_INSTRUCTIONS, type DownloadReadyDetail } from '../src/export';
 import { buildProject } from '../src/geometry';
 import type { ProjectGeometry } from '../src/types';
 
@@ -79,15 +79,16 @@ describe('portable package contents', () => {
     expect(parseConfig(strFromU8(files['project.keyform.json']))).toEqual(config);
   });
 
-  it('includes only the current tray lock instructions in combined mechanical tests', () => {
+  it('includes both tray lock instructions in combined mechanical tests', () => {
     const config = defaultConfig(); config.template = 'interface_tests';
     const project = buildProject(config);
     const meshes = new Map(project.parts.map(p => [p.id, new Uint8Array([1, 2, 3]).buffer]));
     const instructions = strFromU8(unzipSync(buildPackage(config, project, meshes, true))['READ ME.txt']);
     expect(instructions).toContain(TRAY_SNAP_INSTRUCTIONS);
+    expect(instructions).toContain(TRAY_H20_INSTRUCTIONS);
     expect(instructions).not.toContain('SIDE SLIDERS');
     expect(instructions).not.toContain('SIDE BUTTON');
-    expect(project.parts.filter(p => p.id.startsWith('fit-tray-')).map(p => p.id)).toEqual(['fit-tray-snap-lower', 'fit-tray-snap-upper']);
+    expect(project.parts.filter(p => p.id.startsWith('fit-tray-')).map(p => p.id)).toEqual(['fit-tray-snap-lower', 'fit-tray-snap-upper', 'fit-tray-h20-lower', 'fit-tray-h20-upper']);
     expect(instructions).not.toMatch(/SLIDE LOCK|spring feet|actuator stays attached/);
   });
 
@@ -128,10 +129,10 @@ describe('tray lock help and download instructions', () => {
     expect(trayConnectionInstructions(config)).toEqual([]);
   });
 
-  it.each(['rail', 'lid', 'grid', 'tray_snap', 'all'] as const)('selects instructions for the %s test independently of the inventory setting', kind => {
+  it.each(['rail', 'lid', 'grid', 'tray_snap', 'tray_h20', 'all'] as const)('selects instructions for the %s test independently of the inventory setting', kind => {
     const config = defaultConfig(); config.template = 'interface_tests'; config.options.interfaceTests.kind = kind;
     config.options.tray.connection = 'none';
-    expect(trayConnectionInstructions(config)).toEqual(kind === 'all' || kind === 'tray_snap' ? [TRAY_SNAP_INSTRUCTIONS] : []);
+    expect(trayConnectionInstructions(config)).toEqual(kind === 'all' ? [TRAY_SNAP_INSTRUCTIONS, TRAY_H20_INSTRUCTIONS] : kind === 'tray_snap' ? [TRAY_SNAP_INSTRUCTIONS] : kind === 'tray_h20' ? [TRAY_H20_INSTRUCTIONS] : []);
   });
 });
 

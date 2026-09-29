@@ -23,7 +23,7 @@
 
 .connection-field { margin: 0 0 18px; padding: 0; border: 0; min-width: 0; }
 .connection-field legend { font-size: 13px; font-weight: 600; margin-bottom: 10px; }
-.connection-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+.connection-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
 .connection-options label { position: relative; cursor: pointer; min-width: 0; }
 .connection-options input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .connection-options span { display: flex; align-items: center; justify-content: center; min-height: 40px; padding: 6px 3px; border: 1px solid var(--line); border-radius: 8px; font-size: 12px; font-weight: 600; background: var(--surface); }

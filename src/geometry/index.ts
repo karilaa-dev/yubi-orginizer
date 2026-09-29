@@ -3,6 +3,8 @@ import { scadCall, TRAY_RETENTION, TRAY_STACK, TRAY_STACK_PILLAR, TRAY_LID, KEY_
 import { fitOffsets, formatFitOffset } from '../fit-options';
 import { lidExplodeOffset } from '../preview-layout';
 import { CI_INVENTORY_TOUCH_RELIEF } from './ci-touch';
+import { traySlideDirection } from '../tray-slide';
+import { H20_V7 } from './tray-h20';
 import { TRAY_SNAP } from './tray-snap';
 import { trayStackGap } from './tray-stack';
 export { trayStackGap } from './tray-stack';
@@ -14,6 +16,9 @@ export { TRAY_STACK } from './library';
 export function trayStackPitch(height: number, retention = true): number { return height + trayStackGap(retention); }
 export function traySnapEnabled(config: HolderConfig): boolean {
   return config.template === 'inventory_tray' && config.options.tray.connection === 'snap_fit';
+}
+export function trayH20Enabled(config: HolderConfig): boolean {
+  return config.template === 'inventory_tray' && config.options.tray.connection === 'h20_slide_v7';
 }
 export function trayRetentionSpec(type: KeyType) {
   const spec = TRAY_RETENTION[type];
@@ -103,6 +108,12 @@ export function inventoryTrayLayout(config: HolderConfig) {
   const columns = n ? columnsFor(n, config.options.tray.columns) : 0;
   const spacing = clamp(config.options.tray.spacing, 24, 42);
   const margin = Math.max(clamp(config.options.tray.margin, 5, 20), traySnapEnabled(config) ? TRAY_SNAP.margin : 0);
+  const h20 = trayH20Enabled(config);
+  const verticalSlide = h20 && traySlideDirection(config.options.tray.slideDirection).angle % 180 !== 0;
+  // Only the two receiver edges need the broad reserved border. The other
+  // edges follow the user's ordinary margin instead of wasting another 16 mm.
+  const marginX = h20 && verticalSlide ? Math.max(margin, H20_V7.margin) : margin;
+  const marginY = h20 && !verticalSlide ? Math.max(margin, H20_V7.margin) : margin;
   const rowGap = clamp(config.options.tray.rowGap ?? 4, 2, 40);
   const height = clamp(config.options.tray.height, traySnapEnabled(config) ? TRAY_SNAP.minimumHeight : 8.6, 20);
   const scoopRadius = { small: 5, default: 6, large: 7 }[config.options.tray.scoop];
@@ -130,12 +141,22 @@ export function inventoryTrayLayout(config: HolderConfig) {
   }
   for (const row of rows) { row.center -= end / 2; row.minY -= end / 2; row.maxY -= end / 2; }
   const xy: Point[] = config.slots.map((_, i) => [(i % columns - (columns - 1) / 2) * spacing, rows[Math.floor(i / columns)].center]);
-  const baseWidth = n ? Math.ceil((columns - 1) * spacing + 18.6 + 2 * margin) : 0;
-  // Reserve a complete perimeter channel for enclosure snaps. The key layout
-  // stays fixed; the surrounding frame grows independently of its population.
-  const requiredWidth = baseWidth;
-  const pocketDepth = n ? Math.round((end + 2 * margin) * 100) / 100 : 0;
-  const requiredDepth = n ? Math.max(pocketDepth, traySnapEnabled(config) ? TRAY_SNAP.minimumDepth : 0) : 0;
+  const baseWidth = n ? Math.ceil((columns - 1) * spacing + 18.6 + 2 * marginX) : 0;
+  // Grow the surrounding frame for each connection; calibrated storage
+  // contours and the positions of keys remain unchanged.
+  // Front/back slides place receivers along the left/right edges. Reserve
+  // their web against labels and retention slots as well as the pocket itself.
+  const storageHalfWidth = Math.max(0, ...config.slots.map((slot, i) => Math.abs(xy[i][0]) + Math.max(
+    TRAY_RETENTION[slot.type].pocketHalfWidth,
+    scoopRadius,
+    slot.type === 'CI' ? CI_INVENTORY_TOUCH_RELIEF.outerHalfWidth : 0,
+    config.options.tray.retention ? trayRetentionBounds(slot.type).maxX : 0,
+    config.labels && slot.label.trim() ? Math.min(spacing - 4, 24) / 2 : 0,
+  )));
+  const requiredWidth = n ? Math.max(baseWidth, trayH20Enabled(config) ? (verticalSlide ? H20_V7.minimumDepth : H20_V7.minimumWidth) : 0,
+    verticalSlide ? Math.ceil(2 * (storageHalfWidth + marginX)) : 0) : 0;
+  const pocketDepth = n ? Math.round((end + 2 * marginY) * 100) / 100 : 0;
+  const requiredDepth = n ? Math.max(pocketDepth, traySnapEnabled(config) ? TRAY_SNAP.minimumDepth : trayH20Enabled(config) ? (verticalSlide ? H20_V7.minimumWidth : H20_V7.minimumDepth) : 0) : 0;
   const locked = config.options.tray.footprint;
   return {
     xy, rows, rowGap, columns,
@@ -160,7 +181,7 @@ export function inventoryTraySupports(config: HolderConfig, t = inventoryTrayLay
   if (!(config.options.tray.connection !== 'none' || config.options.tray.lid) || t.rows.length < 2) return [];
   const radius = TRAY_STACK_PILLAR.diameter / 2;
   const clearanceRadius = radius + TRAY_STACK_PILLAR.clearance;
-  const inside = (traySnapEnabled(config) ? TRAY_SNAP.margin : TRAY_STACK.rimWidth) + clearanceRadius;
+  const inside = (traySnapEnabled(config) ? TRAY_SNAP.margin : trayH20Enabled(config) ? H20_V7.margin : TRAY_STACK.rimWidth) + clearanceRadius;
   const maxX = t.width / 2 - inside, maxY = t.depth / 2 - inside;
   if (maxX <= 0 || maxY <= 0) return [];
   const rectangles: { x: number; y: number; halfX: number; halfY: number }[] = [];
@@ -206,7 +227,8 @@ function trayScad(config: HolderConfig, t: ReturnType<typeof trayLayout>, invent
   if (inventory) args.push(config.options.tray.retention ?? true, config.options.tray.connection !== 'none', (config.options.tray.sideText ?? '').slice(0, 32), inventoryTraySupports(config));
   args.push(keyLabelMetrics(config).scale);
   if (inventory) args.push(config.options.tray.lid ?? false);
-  return scadCall(inventory ? (traySnapEnabled(config) ? 'inventory_tray_snap' : 'inventory_tray') : 'tray', args);
+  if (inventory && trayH20Enabled(config)) args.push(traySlideDirection(config.options.tray.slideDirection).angle);
+  return scadCall(inventory ? (traySnapEnabled(config) ? 'inventory_tray_snap' : trayH20Enabled(config) ? 'inventory_tray_h20' : 'inventory_tray') : 'tray', args);
 }
 
 /** Every part is a printable millimetre-space solid at Z=0. Assembly transforms
@@ -248,23 +270,29 @@ export function buildProject(config: HolderConfig): ProjectGeometry {
       const retentionHeight = (config.options.tray.retention ?? true) ? Math.max(...types.map((type) => trayRetentionSpec(type).peakHeight)) : 0;
       const hasLid = config.options.tray.lid ?? false;
       const snap = traySnapEnabled(config);
+      const h20 = trayH20Enabled(config);
       const gap = trayStackGap(config.options.tray.retention ?? true);
-      const stackHeight = config.options.tray.connection !== 'none' || hasLid ? gap + (snap ? TRAY_SNAP.captureHeight : TRAY_STACK.tongueHeight) : 0;
+      const stackHeight = config.options.tray.connection !== 'none' || hasLid ? gap + (snap ? TRAY_SNAP.captureHeight : h20 ? H20_V7.pinHeight : TRAY_STACK.tongueHeight) : 0;
       const parts = [part('tray', 'Inventory tray', trayScad(config, t, true), zero(), '#b5c6c4')];
-      const lidTop = t.height + gap + TRAY_LID.thickness;
+      const lidThickness = h20 ? H20_V7.lidThickness : TRAY_LID.thickness;
+      const lidTop = t.height + gap + lidThickness;
       if (hasLid) {
         const percent = config.options.tray.lidTextPercent;
         const lidArgs = [t.width, t.depth, (config.options.tray.lidText ?? '').slice(0, 32), percent === undefined ? clamp(config.options.tray.lidTextSize ?? 6, 2, 100) : percent];
         if (percent !== undefined) lidArgs.push(config.options.tray.lidTextRotation ?? 0);
-        const suffix = percent === undefined ? '' : '_percent';
+        const suffix = percent === undefined ? (h20 ? '_legacy' : '') : '_percent';
+        if (h20) lidArgs.push(traySlideDirection(config.options.tray.slideDirection).angle, config.options.tray.lidStyle ?? 'regular');
         if (snap) parts.push(part('tray-lid', 'Tray lid', scadCall(percent === undefined ? 'tray_snap_lid_legacy' : 'tray_snap_lid', lidArgs), [0, 0, t.height + gap], '#597f91', zero(), [t.width + 8, 0, -(t.height + gap)]));
-        else parts.push(part('tray-lid', 'Tray lid', scadCall('inventory_tray_lid' + suffix, lidArgs), [0, 0, lidTop], '#597f91', [Math.PI, 0, 0], lidExplodeOffset(t.width, lidTop, TRAY_LID.thickness)));
+        else if (h20 || config.options.tray.lidStyle === 'minimal') {
+          const module = h20 ? 'inventory_tray_h20_lid' + suffix : 'inventory_tray_lid_minimal' + (percent === undefined ? '' : '_percent');
+          parts.push(part('tray-lid', config.options.tray.lidStyle === 'minimal' ? 'Minimal material lid' : 'Regular lid', scadCall(module, lidArgs), [0, 0, t.height + gap], '#597f91', zero(), [t.width + 8, 0, -(t.height + gap)]));
+        } else parts.push(part('tray-lid', 'Tray lid', scadCall('inventory_tray_lid' + suffix, lidArgs), [0, 0, lidTop], '#597f91', [Math.PI, 0, 0], lidExplodeOffset(t.width, lidTop, lidThickness)));
       }
       return {
         parts,
         keys: placements(config.slots, t.xy, t.height, true, 'tray'),
         dimensions: [t.width, t.depth, t.height + Math.max(labelHeight, retentionHeight, stackHeight,
-          hasLid ? gap + (snap ? TRAY_SNAP.lidThickness : TRAY_LID.thickness) : 0)],
+          hasLid ? gap + (snap ? TRAY_SNAP.lidThickness : lidThickness) : 0)],
       };
     }
     case 'modular_rail': {
@@ -353,6 +381,7 @@ export function buildTraySnapTest(engagement: number = TRAY_SNAP.engagement): Pr
 }
 
 export function buildFitTests(kind: HolderConfig['options']['interfaceTests']['kind'] = 'all'): ProjectGeometry {
+  if (kind === 'tray_h20') return buildTrayH20Test();
   if (kind === 'tray_snap') return buildTraySnapTest();
   if (kind === 'grid') return {
     parts: [part('fit-grid', 'Gridfinity 1×1 fit test', scadCall('grid_fit_test', []))],
@@ -380,7 +409,19 @@ export function buildFitTests(kind: HolderConfig['options']['interfaceTests']['k
       part('fit-case-corner', 'Case corner fit test', scadCall('lid_fit_base', []), [70, 10, 0]),
       part('fit-lid-corner', 'Lid corner fit test', scadCall('lid_fit_lid', []), [70, 10, 17.4], '#87aeb7', [Math.PI, 0, 0], [0, 0, 18]),
       ...buildTraySnapTest().parts.map((p) => ({ ...p, position: [p.position[0] + 120, p.position[1], p.position[2]] as Vec3 })),
+      ...buildTrayH20Test().parts.map(p => ({ ...p, position: [p.position[0] + 190, p.position[1], p.position[2]] as Vec3 })),
     ],
-    keys: [], dimensions: [215.75 + TRAY_SNAP.couponWidth / 2, Math.max(41.5, TRAY_SNAP.couponDepth), Math.max(17.4, TRAY_SNAP.couponHeight + TRAY_SNAP.gap + TRAY_SNAP.lidThickness)],
+    keys: [], dimensions: [305.75, Math.max(41.5, TRAY_SNAP.couponDepth), Math.max(21, TRAY_SNAP.couponHeight + TRAY_SNAP.gap + TRAY_SNAP.lidThickness)],
+  };
+}
+
+/** Two identical coupon layers, using the unchanged zero-gap reference. */
+export function buildTrayH20Test(): ProjectGeometry {
+  return {
+    parts: [
+      part('fit-tray-h20-lower', 'Slide-lock lower sample', scadCall('tray_h20_coupon', [])),
+      part('fit-tray-h20-upper', 'Slide-lock upper sample', scadCall('tray_h20_coupon', []), [0, 0, 8.4], '#87aeb7', zero(), [48, 0, -8.4]),
+    ],
+    keys: [], dimensions: [40, 28, 21],
   };
 }

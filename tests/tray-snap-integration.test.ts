@@ -54,6 +54,6 @@ describe('integral snap-fit tray integration', () => {
     const p = buildFitTests('tray_snap');
     expect(p.keys).toEqual([]);
     expect(p.parts.map(p => p.id)).toEqual(['fit-tray-snap-lower', 'fit-tray-snap-upper']);
-    expect(new Set(buildFitTests('all').parts.map(p => p.id)).size).toBe(7);
+    expect(new Set(buildFitTests('all').parts.map(p => p.id)).size).toBe(9);
   });
 });

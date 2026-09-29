@@ -399,14 +399,14 @@ describe('illustrative keys and fit pieces', () => {
     expect(buildKeyScad(type, 'body')).toContain(`k=${JSON.stringify(type)};`);
   });
 
-  it('exports only the enclosure snap-fit alongside the other interface tests', () => {
+  it('exports both locking samples alongside the other interface tests', () => {
     const p = buildFitTests();
-    expect(p.parts).toHaveLength(7);
+    expect(p.parts).toHaveLength(9);
     expect(p.keys).toHaveLength(0);
-    expect(p.parts.map((part) => sourceCall(part.scad).module)).toEqual(['grid_fit_test', 'rail_base', 'cartridge', 'lid_fit_base', 'lid_fit_lid', 'tray_snap_coupon_lower', 'tray_snap_lid']);
+    expect(p.parts.map((part) => sourceCall(part.scad).module)).toEqual(['grid_fit_test', 'rail_base', 'cartridge', 'lid_fit_base', 'lid_fit_lid', 'tray_snap_coupon_lower', 'tray_snap_lid', 'tray_h20_coupon', 'tray_h20_coupon']);
   });
   it.each([
-    ['grid', 1, [41.5, 41.5, 7]], ['rail', 2, [36, 36, 16.6]], ['lid', 2, [24, 24, 17.4]], ['tray_snap', 2, [TRAY_SNAP.couponWidth, TRAY_SNAP.couponDepth, TRAY_SNAP.couponHeight + TRAY_SNAP.gap + TRAY_SNAP.lidThickness]], ['all', 7, [215.75 + TRAY_SNAP.couponWidth / 2, Math.max(41.5, TRAY_SNAP.couponDepth), Math.max(17.4, TRAY_SNAP.couponHeight + TRAY_SNAP.gap + TRAY_SNAP.lidThickness)]],
+    ['grid', 1, [41.5, 41.5, 7]], ['rail', 2, [36, 36, 16.6]], ['lid', 2, [24, 24, 17.4]], ['tray_snap', 2, [TRAY_SNAP.couponWidth, TRAY_SNAP.couponDepth, TRAY_SNAP.couponHeight + TRAY_SNAP.gap + TRAY_SNAP.lidThickness]], ['tray_h20', 2, [40, 28, 21]], ['all', 9, [305.75, Math.max(41.5, TRAY_SNAP.couponDepth), Math.max(21, TRAY_SNAP.couponHeight + TRAY_SNAP.gap + TRAY_SNAP.lidThickness)]],
   ] as const)('generates only the %s interface pieces and reports their real assembly dimensions', (kind, count, dimensions) => {
     const config = sampleConfig(); config.template = 'interface_tests'; config.slots = [];
     config.options.interfaceTests.kind = kind;

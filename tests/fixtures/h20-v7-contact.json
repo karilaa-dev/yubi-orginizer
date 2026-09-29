@@ -1,0 +1,132 @@
+{
+  "source": "original V7 validation.json",
+  "quantity": "nominal intentional interference volume, not force",
+  "scope": "one pin with original local fixture/body; 2 pins expected twice this in an isolated identical fixture",
+  "samples": [
+    {
+      "remaining_slide_mm": 6.0,
+      "H20_overlap_mm3": 0.0,
+      "difference_from_V6_mm3": 0.0
+    },
+    {
+      "remaining_slide_mm": 5.75,
+      "H20_overlap_mm3": 0.0,
+      "difference_from_V6_mm3": 0.0
+    },
+    {
+      "remaining_slide_mm": 5.5,
+      "H20_overlap_mm3": 0.0,
+      "difference_from_V6_mm3": 0.0
+    },
+    {
+      "remaining_slide_mm": 5.25,
+      "H20_overlap_mm3": 0.0,
+      "difference_from_V6_mm3": 0.0
+    },
+    {
+      "remaining_slide_mm": 5.0,
+      "H20_overlap_mm3": 0.0,
+      "difference_from_V6_mm3": 0.0
+    },
+    {
+      "remaining_slide_mm": 4.75,
+      "H20_overlap_mm3": 0.0,
+      "difference_from_V6_mm3": 0.0
+    },
+    {
+      "remaining_slide_mm": 4.5,
+      "H20_overlap_mm3": 0.0,
+      "difference_from_V6_mm3": 0.0
+    },
+    {
+      "remaining_slide_mm": 4.25,
+      "H20_overlap_mm3": 0.01575597046728534,
+      "difference_from_V6_mm3": 0.0
+    },
+    {
+      "remaining_slide_mm": 4.0,
+      "H20_overlap_mm3": 0.06529509677954745,
+      "difference_from_V6_mm3": 0.0
+    },
+    {
+      "remaining_slide_mm": 3.75,
+      "H20_overlap_mm3": 0.13258676572064176,
+      "difference_from_V6_mm3": 0.0
+    },
+    {
+      "remaining_slide_mm": 3.5,
+      "H20_overlap_mm3": 0.1998784324606253,
+      "difference_from_V6_mm3": 0.0
+    },
+    {
+      "remaining_slide_mm": 3.25,
+      "H20_overlap_mm3": 0.26717009920060947,
+      "difference_from_V6_mm3": 0.0
+    },
+    {
+      "remaining_slide_mm": 3.0,
+      "H20_overlap_mm3": 0.3344617659405942,
+      "difference_from_V6_mm3": 0.0
+    },
+    {
+      "remaining_slide_mm": 2.75,
+      "H20_overlap_mm3": 0.40175343268057845,
+      "difference_from_V6_mm3": 0.0
+    },
+    {
+      "remaining_slide_mm": 2.5,
+      "H20_overlap_mm3": 0.4690450994205628,
+      "difference_from_V6_mm3": 0.0
+    },
+    {
+      "remaining_slide_mm": 2.25,
+      "H20_overlap_mm3": 0.5363367661605473,
+      "difference_from_V6_mm3": 0.0
+    },
+    {
+      "remaining_slide_mm": 2.0,
+      "H20_overlap_mm3": 0.6036284329005323,
+      "difference_from_V6_mm3": 0.0
+    },
+    {
+      "remaining_slide_mm": 1.75,
+      "H20_overlap_mm3": 0.670920099640516,
+      "difference_from_V6_mm3": 0.0
+    },
+    {
+      "remaining_slide_mm": 1.5,
+      "H20_overlap_mm3": 0.7382117663804585,
+      "difference_from_V6_mm3": 0.0
+    },
+    {
+      "remaining_slide_mm": 1.25,
+      "H20_overlap_mm3": 0.8055034331204509,
+      "difference_from_V6_mm3": 0.0
+    },
+    {
+      "remaining_slide_mm": 1.0,
+      "H20_overlap_mm3": 0.8727950998604538,
+      "difference_from_V6_mm3": 0.0
+    },
+    {
+      "remaining_slide_mm": 0.75,
+      "H20_overlap_mm3": 0.9400867666003736,
+      "difference_from_V6_mm3": 0.0
+    },
+    {
+      "remaining_slide_mm": 0.5,
+      "H20_overlap_mm3": 1.0073784333403726,
+      "difference_from_V6_mm3": 0.0
+    },
+    {
+      "remaining_slide_mm": 0.25,
+      "H20_overlap_mm3": 1.0589142905870248,
+      "difference_from_V6_mm3": 0.0
+    },
+    {
+      "remaining_slide_mm": 0.0,
+      "H20_overlap_mm3": 1.076666666666668,
+      "difference_from_V6_mm3": 0.0
+    }
+  ]
+}

@@ -3,6 +3,9 @@ import usbCSource from './profiles/calibrated_usb_c.scad?raw';
 import type { KeyType } from '../types';
 import { ciTouchScad } from './ci-touch';
 import { TRAY_SNAP, traySnapScad } from './tray-snap';
+import { trayH20Scad } from './tray-h20';
+import { cNanoSupportScad } from './c-nano-support';
+import { trayLidScad } from './tray-lid';
 import { TRAY_STACK } from './tray-stack';
 export { TRAY_STACK } from './tray-stack';
 
@@ -45,6 +48,9 @@ export const calibratedLibrary = `${profiles}\n${usbCSource.split('// Examples, 
 export const library = `${calibratedLibrary}
 ${ciTouchScad}
 ${traySnapScad}
+${trayH20Scad}
+${cNanoSupportScad}
+${trayLidScad}
 eps=0.025;
 function key_l(k)=k=="A"||k=="C"?45:k=="AN"?13:k=="CN"?10.1:k=="CK"?29.5:40.3;
 function key_t(k)=k=="A"?3.7:k=="C"?3.75:k=="AN"?3.1:k=="CN"?7:5;
@@ -106,11 +112,15 @@ module offset_socket_cut(k,top,fit_offset=0) {
   }
 }
 module body_cut(k,top) {
-  translate([0,-pocket_l(k)/2,top-pocket_d(k)])
-    linear_extrude(pocket_d(k)+0.15) polygon(body_pts(k));
+  difference() {
+    translate([0,-pocket_l(k)/2,top-pocket_d(k)])
+      linear_extrude(pocket_d(k)+0.15) polygon(body_pts(k));
+    if(k=="CN") cn_flat_support(top);
+  }
 }
 module scoop(k,top,r=5) {
   translate([0,pocket_l(k)/2,top-2.5]) cylinder(r=r,h=2.65);
+  if(k=="CN") cn_connector_grip(top,r);
 }
 // Conservative width budgets measured with the bundled Liberation Sans Bold
 // renderer across all accepted code points. Broad ASCII glyphs and extended

@@ -5,6 +5,8 @@ import { MATCHING_MODELS, searchKeys } from './catalog';
 import { ACTIVE_PROJECT_KEY, readDraft, writeDraft, readProjects, saveProject, type LocalProject } from './projects';
 import { icon, keyIcon } from './icons';
 import { buildProject, inventoryTrayLayout, trayFootprintError } from './geometry';
+import { TRAY_SLIDE_DIRECTIONS, traySlideMotionInstructions } from './tray-slide';
+import { H20_V7 } from './geometry/tray-h20';
 import { TRAY_SNAP } from './geometry/tray-snap';
 import { keyLabelMillimeters, keyLabelPercent, readLegacyLidSize } from './text-size';
 import { OrganizerPreview } from './preview';
@@ -111,7 +113,10 @@ function columns(id: string, value: number): string { return `<div class="field"
 function textField(id: string, label: string, value: string, disabled = false): string { return `<div class="field"><label for="${id}">${label}</label><input id="${id}" data-option="${id}" type="text" maxlength="32" value="${esc(value)}" placeholder="None" ${disabled ? 'disabled' : ''}/></div>`; }
 function toggle(id: string, label: string, checked: boolean, disabled = false): string { return `<label class="toggle-row" for="${id}"><span>${label}</span><input id="${id}" type="checkbox" data-option="${id}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}/><span class="switch" aria-hidden="true"></span></label>`; }
 function trayConnectionControl(): string {
-  return `<fieldset class="connection-field"><legend>Tray connection</legend><div class="connection-options">${([['none', 'None'], ['snap_fit', 'Enclosure snap-fit']] as const).map(([value, name]) => `<label><input type="radio" name="tray-connection" data-option="tray.connection" value="${value}" ${config.options.tray.connection === value ? 'checked' : ''}/><span>${name}</span></label>`).join('')}</div><p class="field-hint" id="tray-lock-hint"></p></fieldset>`;
+  return `<fieldset class="connection-field"><legend>Tray connection</legend><div class="connection-options">${([['none', 'Non-stackable'], ['stackable', 'Stackable'], ['h20_slide_v7', 'Slide-lock']] as const).map(([value, name]) => `<label><input type="radio" name="tray-connection" data-option="tray.connection" value="${value}" ${config.options.tray.connection === value ? 'checked' : ''}/><span>${name}</span></label>`).join('')}</div><p class="field-hint" id="tray-lock-hint"></p></fieldset><div id="tray-slide-direction" ${config.options.tray.connection === 'h20_slide_v7' ? '' : 'hidden'}><div class="field"><label for="tray.slideDirection">Sliding direction</label><select id="tray.slideDirection" data-option="tray.slideDirection">${TRAY_SLIDE_DIRECTIONS.map(d => `<option value="${d.id}" ${d.id === config.options.tray.slideDirection ? 'selected' : ''}>${d.label}</option>`).join('')}</select></div><p class="field-hint">Direction to lock, viewed from above. Front is the side-text edge. Use the same direction on every layer.</p></div>`;
+}
+function trayLidStyleControl(): string {
+  return `<div id="tray-lid-style"><div class="field"><label for="tray.lidStyle">Lid design</label><select id="tray.lidStyle" data-option="tray.lidStyle" ${config.options.tray.lid ? '' : 'disabled'}>${([['regular', 'Regular'], ['minimal', 'Minimal material']] as const).map(([value, label]) => `<option value="${value}" ${config.options.tray.lidStyle === value ? 'selected' : ''}>${label}</option>`).join('')}</select></div><p class="field-hint">Both have a closed inside face at the same height as a stacked tray. Minimal material uses a thinner panel with ribs on the outside.</p></div>`;
 }
 function labelControls(): string { return toggle('labels', 'Print key labels', config.labels) + sizeField('labelSize', 'Key label size', keyLabelPercent(config.labelSize), 37.5, 100, 2.5, false, '%') + '<p class="field-hint">Long labels shrink to fit.</p>'; }
 
@@ -131,7 +136,7 @@ function updateTraySizeReadout(): void {
 }
 function projectSummary(project: HolderConfig): string {
   if (project.template === 'key_fit_tester') return `${SOCKET_PROFILES.find(p => p.id === project.options.tester.profile)!.name} · ${project.options.tester.samples} samples`;
-  if (project.template === 'interface_tests') return project.options.interfaceTests.kind === 'all' ? 'All mechanical tests' : `${{ grid: 'Gridfinity', lid: 'Lid', rail: 'Rail', tray_snap: 'Enclosure snap-fit' }[project.options.interfaceTests.kind]} fit test`;
+  if (project.template === 'interface_tests') return project.options.interfaceTests.kind === 'all' ? 'All mechanical tests' : `${{ grid: 'Gridfinity', lid: 'Lid', rail: 'Rail', tray_snap: 'Enclosure snap-fit', tray_h20: 'Slide-lock' }[project.options.interfaceTests.kind]} fit test`;
   return `${project.slots.length} keys`;
 }
 function renderTestControls(): void {
@@ -140,7 +145,7 @@ function renderTestControls(): void {
     $('#control-content').innerHTML = `<div class="customize-content test-controls"><h3>USB socket</h3><div class="socket-profiles" role="group" aria-label="USB socket profile">${SOCKET_PROFILES.map(p => `<button class="socket-profile" data-socket-profile="${p.id}" aria-pressed="${p.id === t.profile}">${keyIcon(p.id)}<span>${p.name}</span></button>`).join('')}</div><p id="tester-models" class="field-hint">${SOCKET_PROFILES.find(p => p.id === t.profile)!.models}</p><div class="field"><label for="tester.samples">Samples</label><select id="tester.samples" data-option="tester.samples" data-numeric>${[3, 5].map(n => `<option value="${n}" ${t.samples === n ? 'selected' : ''}>${n} sockets</option>`).join('')}</select></div>${sizeField('tester.startOffset', 'First offset', t.startOffset, -0.3, 0.3, 0.05)}<div class="field"><label for="tester.step">Offset step</label><select id="tester.step" data-option="tester.step" data-numeric>${[...new Set([0.05, 0.1, 0.15, 0.2, t.step])].sort((a, b) => a - b).map(n => `<option value="${n}" ${Math.abs(t.step - n) < 1e-6 ? 'selected' : ''}>${Number(n.toFixed(4))} mm</option>`).join('')}</select></div><div id="sample-offsets" class="sample-offsets" aria-label="Socket offsets"></div><p class="field-hint tester-hint">0 = calibrated · − tighter · + looser<br/>Offsets are per side and apply only to this tester.</p></div>`;
   } else {
     const kind = config.options.interfaceTests.kind;
-    $('#control-content').innerHTML = `<div class="customize-content test-controls"><h3>Mechanical interface</h3><div class="field"><label for="interfaceTests.kind">Test pieces</label><select id="interfaceTests.kind" data-option="interfaceTests.kind">${([['all', 'All interfaces'], ['rail', 'Rail & cartridge'], ['lid', 'Case & lid'], ['grid', 'Gridfinity foot'], ['tray_snap', 'Enclosure snap-fit']] as const).map(([value, label]) => `<option value="${value}" ${value === kind ? 'selected' : ''}>${label}</option>`).join('')}</select></div><p id="interface-description" class="field-hint"></p></div>`;
+    $('#control-content').innerHTML = `<div class="customize-content test-controls"><h3>Mechanical interface</h3><div class="field"><label for="interfaceTests.kind">Test pieces</label><select id="interfaceTests.kind" data-option="interfaceTests.kind">${([['all', 'All interfaces'], ['rail', 'Rail & cartridge'], ['lid', 'Case & lid'], ['grid', 'Gridfinity foot'], ['tray_snap', 'Enclosure snap-fit'], ['tray_h20', 'Slide-lock (H20/V7)']] as const).map(([value, label]) => `<option value="${value}" ${value === kind ? 'selected' : ''}>${label}</option>`).join('')}</select></div><p id="interface-description" class="field-hint"></p></div>`;
   }
   updateTestReadouts();
 }
@@ -152,15 +157,17 @@ function updateTestReadouts(): void {
     }).join('');
   }
   if (config.template === 'interface_tests' && document.getElementById('interface-description')) $('#interface-description').textContent = {
-    all: 'Print small samples to check the rail, lift-off lid, enclosure snap-fit, and Gridfinity baseplate fit.',
+    all: 'Print small samples to check the rail, lift-off lid, slide-lock, legacy enclosure snap-fit, and Gridfinity baseplate fit.',
     rail: 'Slide the cartridge into the open rail end to check running clearance.',
     lid: 'Check how the lid corner seats over the case rim.',
     grid: 'Check the 1 × 1 foot in your Gridfinity baseplate.',
+    tray_h20: 'Print both samples with pins upward. Offset the upper layer 6 mm to the right, lower, then slide left until flush. Slide back before lifting.',
     tray_snap: 'Press the shells together until the rim hooks click. Lift gently at an edge to release. Test the fit before printing a full tray.',
   }[config.options.interfaceTests.kind];
 }
 function trayMinimumMargin(project: HolderConfig): number {
-  return project.template === 'inventory_tray' && project.options.tray.connection === 'snap_fit' ? TRAY_SNAP.margin : 5;
+  if (project.template !== 'inventory_tray') return 5;
+  return project.options.tray.connection === 'snap_fit' ? TRAY_SNAP.margin : project.options.tray.connection === 'h20_slide_v7' ? H20_V7.edgeMargin : 5;
 }
 function trayMinimumHeight(project: HolderConfig): number {
   if (project.template === 'inventory_tray' && project.options.tray.connection === 'snap_fit') return TRAY_SNAP.minimumHeight;
@@ -168,6 +175,11 @@ function trayMinimumHeight(project: HolderConfig): number {
 }
 function trayConnectionName(project: HolderConfig): string { return project.options.tray.connection === 'snap_fit' ? 'Enclosure snap-fit' : 'Tray'; }
 function updateTrayLockReadouts(): void {
+  const minimumMargin = trayMinimumMargin(config);
+  document.querySelectorAll<HTMLInputElement>('[data-option="tray.margin"]').forEach(input => {
+    input.min = String(minimumMargin);
+    if (input !== document.activeElement && !inputErrors.has('tray.margin')) input.value = String(Math.max(config.options.tray.margin, minimumMargin));
+  });
   const minimumHeight = trayMinimumHeight(config);
   document.querySelectorAll<HTMLInputElement>('[data-option="tray.height"]').forEach(input => {
     input.min = String(minimumHeight);
@@ -178,10 +190,22 @@ function updateTrayLockReadouts(): void {
     heightHint.hidden = config.options.tray.height >= minimumHeight;
     heightHint.textContent = `${trayConnectionName(config)} requires at least ${minimumHeight} mm tray height to support the mechanism.`;
   }
+  const directionControl = document.getElementById('tray-slide-direction');
+  if (directionControl) directionControl.hidden = config.options.tray.connection !== 'h20_slide_v7';
+  const lidStyle = document.getElementById('tray-lid-style');
+  if (lidStyle) {
+    lidStyle.hidden = config.options.tray.connection === 'snap_fit';
+    lidStyle.querySelector('select')!.disabled = !config.options.tray.lid;
+    lidStyle.querySelector('.field-hint')!.textContent = config.options.tray.connection === 'h20_slide_v7'
+      ? 'Regular has a rounded border and thumb grips at the sliding ends. Minimal material uses exterior ribs. Both keep keys at the same height as a stacked tray.'
+      : 'Both have a closed inside face at the same height as a stacked tray. Minimal material uses a thinner panel with ribs on the outside.';
+  }
   const hint = document.getElementById('tray-lock-hint');
   if (hint) hint.textContent = {
-    none: 'No tray-to-tray connection.',
-    snap_fit: 'Four solid rim catches engage the matching skirt. Press together to close; lift one edge at the notch to open. Print the PLA fit sample first.',
+    none: 'A standalone tray. Enable Lid to add a matching lift-off cover.',
+    stackable: 'A locating rim keeps matching trays aligned. Lift straight up to separate them.',
+    h20_slide_v7: 'Two pins lock matching layers together. ' + traySlideMotionInstructions(config.options.tray.slideDirection),
+    snap_fit: 'Saved enclosure snap-fit preserved. Select a tray type above to replace it. Four solid rim catches engage the matching skirt. Press together to close; lift one edge at the notch to open. Print the PLA fit sample first.',
   }[config.options.tray.connection];
   const instructions = trayConnectionInstructions(config);
   $('#tray-lock-help').hidden = !instructions.length; $('#tray-lock-tip').hidden = !instructions.length;
@@ -216,7 +240,7 @@ function renderControls(): void {
       const minHeight = trayMinimumHeight(config);
       controls = columns('tray.columns', o.tray.columns) + sizeField('tray.spacing', 'Column spacing', o.tray.spacing, 24, 42) + (config.template === 'inventory_tray' ? sizeField('tray.rowGap', 'Space between rows', o.tray.rowGap, 2, 40) : sizeField('tray.rowSpacing', 'Row spacing', o.tray.rowSpacing, 66, 110)) + sizeField('tray.margin', 'Outer margin', Math.max(o.tray.margin, trayMinimumMargin(config)), trayMinimumMargin(config), 20) + sizeField('tray.height', config.template === 'travel_case' ? 'Insert height' : 'Tray height', Math.max(o.tray.height, minHeight), minHeight, 20, 0.1) + '<p class="field-hint" id="tray-height-hint" hidden></p>' + `<div class="field"><label for="tray.scoop">Finger access</label><select id="tray.scoop" data-option="tray.scoop">${['small', 'default', 'large'].map(s => `<option value="${s}" ${s === o.tray.scoop ? 'selected' : ''}>${s === 'default' ? 'Standard' : s[0].toUpperCase() + s.slice(1)}</option>`).join('')}</select></div>`;
     }
-    if (config.template === 'inventory_tray') controls = traySizeControl() + toggle('tray.retention', 'Key retention', o.tray.retention) + '<p class="field-hint">Small tabs help hold keys in their pockets.</p>' + trayConnectionControl() + toggle('tray.lid', 'Lid', o.tray.lid) + textField('tray.lidText', 'Lid text', o.tray.lidText, !o.tray.lid) + lidTextSizeControl() + textField('tray.sideText', 'Side text', o.tray.sideText) + controls;
+    if (config.template === 'inventory_tray') controls = traySizeControl() + toggle('tray.retention', 'Key retention', o.tray.retention) + '<p class="field-hint">Small tabs help hold keys in their pockets.</p>' + trayConnectionControl() + toggle('tray.lid', 'Lid', o.tray.lid) + trayLidStyleControl() + textField('tray.lidText', 'Lid text', o.tray.lidText, !o.tray.lid) + lidTextSizeControl() + textField('tray.sideText', 'Side text', o.tray.sideText) + controls;
     if (config.template === 'travel_case') controls += sizeField('case.headroom', 'Extra lid headroom', o.case.headroom, 0, 15) + textField('case.title', 'Lid text', o.case.title);
     if (config.template === 'grid_organizer') controls = `<div class="field"><label for="grid.mode">Storage style</label><select id="grid.mode" data-option="grid.mode">${['mixed', 'upright', 'flat'].map(s => `<option value="${s}" ${s === o.grid.mode ? 'selected' : ''}>${s === 'mixed' ? 'Mixed' : s === 'upright' ? 'All upright' : 'All flat'}</option>`).join('')}</select></div>` + sizeField('grid.extraHeight', 'Extra tile height', o.grid.extraHeight, 0, 15) + '<p class="field-hint">2 × 2 tiles. More keys add tiles.</p>';
     $('#control-content').innerHTML = `<div class="customize-content">${controls}${labelControls()}</div>`;
@@ -348,6 +372,7 @@ function updateOption(input: HTMLInputElement | HTMLSelectElement): void {
   try {
     if (field === 'labelSize' && (!Number.isFinite(next.labelSize) || next.labelSize < 1.5 || next.labelSize > 4)) throw new Error('Key label size must be between 37.5% and 100%.');
     if (field === 'tray.height' && trayMinimumHeight(next) > 8.6 && next.options.tray.height < trayMinimumHeight(next)) throw new Error(`${trayConnectionName(next)} requires at least ${trayMinimumHeight(next)} mm tray height.`);
+    if (field === 'tray.margin' && next.options.tray.margin < trayMinimumMargin(next)) throw new Error(`This tray connection needs at least ${trayMinimumMargin(next)} mm outer margin.`);
     validateConfig(next); inputErrors.delete(field); input.setCustomValidity('');
     if (field === 'tray.lid') {
       document.querySelectorAll<HTMLInputElement>('[data-option="tray.lidText"], [data-option="tray.lidTextPercent"]').forEach(control => {
@@ -390,9 +415,12 @@ $('#preview-quality').addEventListener('change', () => { quality = $<HTMLSelectE
 $('#download').addEventListener('click', () => {
   if (readyRevision !== revision || !currentProject) return;
   const enclosure = (config.template === 'inventory_tray' && config.options.tray.connection === 'snap_fit') || currentProject.parts.some(p => p.id.startsWith('fit-tray-snap-'));
+  const h20 = (config.template === 'inventory_tray' && config.options.tray.connection === 'h20_slide_v7') || currentProject.parts.some(p => p.id.startsWith('fit-tray-h20-'));
   const tip = $('#tray-print-tip');
-  tip.hidden = !(enclosure || (config.template === 'inventory_tray' && config.options.tray.retention));
-  tip.textContent = enclosure
+  tip.hidden = !(h20 || enclosure || (config.template === 'inventory_tray' && config.options.tray.retention));
+  tip.textContent = h20
+    ? 'Print the Slide-lock fit sample first, using the same material as your H20 reference. Keep pins upward and the lid’s flat inside face down, at 100% scale. Check the receiver roofs with supports disabled.'
+    : enclosure
     ? `Use PLA or PLA Matte for the enclosure snap-fit. Keep the supplied print orientation and perimeter channels clear.`
     : 'Use PETG for flexible key-retention tabs. Keep the supplied print orientation and leave movement slots free of supports.';
   downloadResult.hidden = true; $<HTMLDialogElement>('#download-dialog').showModal();

@@ -12,13 +12,43 @@ Desktop OpenSCAD needs Liberation Sans and Text Metrics for matching lettering.
 
 ## Inventory trays
 
-The only locking connection is **Enclosure snap-fit**; **None** disables it.
-A lid can be added independently. For stacked trays with different contents,
+**Non-stackable** keeps the optional lift-off lid. **Stackable** adds locating
+rims for trays that lift apart. **Slide-lock** adds the H20/V7 pins and guides,
+with matching underside receivers. A lid can be added independently. For stacked trays with different contents,
 lock the larger layout's width and depth before removing keys. Use identical
 outside dimensions and the same connection on every layer. Undersized locked
 footprints block exports until corrected; key pockets are never scaled.
 
-The [enclosure joint](enclosure-snap-fit.md) uses four solid catches and a flexible
+For [H20/V7 slide-lock](h20-slide-lock.md), first print the two-piece sample under
+Mechanical fit tests. Keep pins upward and print slide-lock lids with the flat inside face down. Start the upper
+layer 6 mm opposite the selected sliding direction, lower, then slide until
+flush; reverse the motion before lifting. Match the direction on every layer.
+The small fit sample always slides left. Preserve the material/settings used for your reference fit and inspect
+the sloped receiver roofs with supports disabled.
+
+Choose **Lid design → Regular** for a 2.4 mm panel or **Minimal material** for a
+closed 1.2 mm panel with exterior ribs. Both have the same key-facing height as
+a stacked tray. Slide-lock lids place their receiver housings above the panel;
+print them inside-face down. Minimal lift-off lids also print inside-face down,
+while regular lift-off lids retain their exterior-down orientation. Exported
+parts are already oriented correctly. Extra height around the slide-lock
+receivers is external and does not add space above the keys.
+The regular slide-lock lid conceals its receivers in a rounded border. Use
+the recessed thumb grips at the sliding ends to push it 6 mm opposite the
+locking direction, then lift. The grips follow the selected direction;
+the H20 friction fit remains unchanged.
+
+Flat C Nano pockets now include a raised connector shelf so the body and USB-C
+connector rest horizontally. The reference model determines its height; test
+the actual key before printing a larger batch.
+The connector tip sits over a deeper finger recess with 1 mm of clearance
+underneath, while a short ledge continues to support its root.
+
+Set **Outer margin** to 5 mm for the compact footprint; extra clearance is
+reserved automatically on the two receiver edges. Larger selected margins and
+locked dimensions are preserved.
+
+Saved projects using the [legacy enclosure joint](enclosure-snap-fit.md) retain four solid catches and a flexible
 mating skirt. Start with PLA / PLA Matte and the complete frame sample. Compare
 0.1, 0.2 and 0.3 mm engagement. Press vertically to close and lift one end
 progressively at its finger notch to open. Keep clearance channels unobstructed.

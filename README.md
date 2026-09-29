@@ -10,8 +10,8 @@ and exports stay on your device; no account or backend is required.
   and travel cases.
 - Six key shapes: YubiKey 5 NFC, 5C NFC, 5 Nano, 5C Nano, 5C, and 5Ci.
 - Adjustable layouts, finger access, key retention, printed labels and lids.
-- Enclosure snap-fit connections for tray lids and matching stacked trays.
-- Socket and mechanical fit samples, including three enclosure engagement variants.
+- Three tray types: non-stackable, lift-off stacking, and H20/V7 slide-lock.
+- Socket and mechanical fit samples, including a two-pin slide-lock pair.
 - STL, editable SCAD, 3MF and project JSON exports.
 - Local project saving and offline use after the app has been cached.
 
@@ -45,12 +45,13 @@ service worker; the development server does not install the offline app.
    in your slicer before printing.
 
 For matching tray layers with different contents, use **Lock tray dimensions**
-to preserve their outside width and depth. **Enclosure snap-fit** is the only
-tray lock; **None** disables the connection. Older saved connections migrate to
-the enclosure joint. Regenerate both mating parts when replacing older prints.
+to preserve their outside width and depth. Choose **Non-stackable** for a standalone
+tray with an optional lift-off lid, **Stackable** for locating rims, or **Slide-lock**
+for the two-pin H20/V7 connection. Saved enclosure snap-fit projects retain their
+geometry. Regenerate both mating parts when changing the connection type.
 
 See [printing and fit](docs/printing.md) and the
-[enclosure snap-fit design](docs/enclosure-snap-fit.md). Physical fit, retention
+[H20/V7 slide-lock design](docs/h20-slide-lock.md). Physical fit, retention
 and durability require a printed sample; digital validation is not a physical test.
 
 Saved projects belong to the browser and device where they were created.

@@ -1,0 +1,549 @@
+{
+  "description": "Measured pre-compaction meshes: 13 mm margins on every edge; 8.8 mm lid with 13 mm frame and 2.4 mm panel. Volumes are geometric solid volume, not sliced filament usage.",
+  "records": [
+    {
+      "name": "mixed-retained",
+      "config": {
+        "version": 1,
+        "template": "inventory_tray",
+        "slots": [
+          {
+            "id": "c75d9376-a1c8-49ac-9747-6d98a11b7a30",
+            "type": "A",
+            "label": "5 NFC",
+            "occupied": true
+          },
+          {
+            "id": "68118414-7b53-4bd3-b98c-62f4c22d185c",
+            "type": "C",
+            "label": "5C NFC",
+            "occupied": true
+          },
+          {
+            "id": "95afe628-98af-435a-bb3a-044ec37c1c43",
+            "type": "AN",
+            "label": "5 Nano",
+            "occupied": true
+          },
+          {
+            "id": "3c0401c2-1b17-4c76-b4f4-dc9f807805ba",
+            "type": "CN",
+            "label": "5C Nano",
+            "occupied": true
+          },
+          {
+            "id": "a7b6f45c-b0c9-4e6c-ba56-1ada8418e98f",
+            "type": "CK",
+            "label": "5C",
+            "occupied": true
+          },
+          {
+            "id": "c0e36a34-9813-4bbb-aa49-86295dc69b1f",
+            "type": "CI",
+            "label": "5Ci",
+            "occupied": true
+          }
+        ],
+        "labels": true,
+        "labelSize": 4,
+        "options": {
+          "dock": {
+            "columns": 0,
+            "spacing": 26,
+            "rowSpacing": 45,
+            "edgeMargin": 18,
+            "depthMargin": 22.5,
+            "height": 13,
+            "title": "KEY DOCK"
+          },
+          "rail": {
+            "mountingHoles": true,
+            "endMargin": 5
+          },
+          "tray": {
+            "columns": 3,
+            "spacing": 24,
+            "rowSpacing": 76,
+            "rowGap": 8,
+            "margin": 5,
+            "height": 8.6,
+            "scoop": "large",
+            "retention": true,
+            "connection": "h20_slide_v7",
+            "slideDirection": "left",
+            "sideText": "Layer 1",
+            "lid": true,
+            "lidText": "H20 / V7",
+            "lidTextSize": 6,
+            "lidTextPercent": 100,
+            "lidTextRotation": 0,
+            "footprint": null
+          },
+          "grid": {
+            "mode": "mixed",
+            "extraHeight": 0
+          },
+          "case": {
+            "headroom": 0,
+            "title": "SECURITY KEYS"
+          },
+          "tester": {
+            "profile": "C",
+            "startOffset": -0.1,
+            "step": 0.1,
+            "samples": 3
+          },
+          "interfaceTests": {
+            "kind": "all"
+          }
+        }
+      },
+      "parts": [
+        {
+          "name": "mixed-retained/tray",
+          "triangles": 20302,
+          "vertices": 10129,
+          "min": [
+            -46.5,
+            -74.91999816894531,
+            0
+          ],
+          "max": [
+            46.5,
+            74.91999816894531,
+            14.300000190734863
+          ],
+          "volume": 110089.45771928527,
+          "collinearTriangles": 45,
+          "components": 1
+        },
+        {
+          "name": "mixed-retained/tray-lid",
+          "triangles": 2406,
+          "vertices": 1205,
+          "min": [
+            -46.5,
+            -74.91999816894531,
+            0
+          ],
+          "max": [
+            46.5,
+            74.91999816894531,
+            8.800000190734863
+          ],
+          "volume": 67803.38232219894,
+          "collinearTriangles": 6,
+          "components": 1
+        }
+      ]
+    },
+    {
+      "name": "mixed-bare",
+      "config": {
+        "version": 1,
+        "template": "inventory_tray",
+        "slots": [
+          {
+            "id": "cfbfa9e2-032d-42e7-98dd-89773deebee2",
+            "type": "A",
+            "label": "5 NFC",
+            "occupied": true
+          },
+          {
+            "id": "b15f4501-5f40-4e49-ac46-2f9a4749414c",
+            "type": "C",
+            "label": "5C NFC",
+            "occupied": true
+          },
+          {
+            "id": "4842df90-c82e-4e59-91eb-5593a1837c12",
+            "type": "AN",
+            "label": "5 Nano",
+            "occupied": true
+          },
+          {
+            "id": "4bdc8e43-c04f-47db-a79f-bda93107825a",
+            "type": "CN",
+            "label": "5C Nano",
+            "occupied": true
+          },
+          {
+            "id": "6bed9143-a3d1-4b44-9066-8b6eaa322144",
+            "type": "CK",
+            "label": "5C",
+            "occupied": true
+          },
+          {
+            "id": "104b975a-fcfc-4766-a9df-33acb4ef6523",
+            "type": "CI",
+            "label": "5Ci",
+            "occupied": true
+          }
+        ],
+        "labels": true,
+        "labelSize": 4,
+        "options": {
+          "dock": {
+            "columns": 0,
+            "spacing": 26,
+            "rowSpacing": 45,
+            "edgeMargin": 18,
+            "depthMargin": 22.5,
+            "height": 13,
+            "title": "KEY DOCK"
+          },
+          "rail": {
+            "mountingHoles": true,
+            "endMargin": 5
+          },
+          "tray": {
+            "columns": 3,
+            "spacing": 24,
+            "rowSpacing": 76,
+            "rowGap": 8,
+            "margin": 5,
+            "height": 8.6,
+            "scoop": "large",
+            "retention": false,
+            "connection": "h20_slide_v7",
+            "slideDirection": "left",
+            "sideText": "Layer 1",
+            "lid": true,
+            "lidText": "H20 / V7",
+            "lidTextSize": 6,
+            "lidTextPercent": 100,
+            "lidTextRotation": 0,
+            "footprint": null
+          },
+          "grid": {
+            "mode": "mixed",
+            "extraHeight": 0
+          },
+          "case": {
+            "headroom": 0,
+            "title": "SECURITY KEYS"
+          },
+          "tester": {
+            "profile": "C",
+            "startOffset": -0.1,
+            "step": 0.1,
+            "samples": 3
+          },
+          "interfaceTests": {
+            "kind": "all"
+          }
+        }
+      },
+      "parts": [
+        {
+          "name": "mixed-bare/tray",
+          "triangles": 18894,
+          "vertices": 9449,
+          "min": [
+            -46.5,
+            -74.91999816894531,
+            0
+          ],
+          "max": [
+            46.5,
+            74.91999816894531,
+            13.800000190734863
+          ],
+          "volume": 110130.98480278533,
+          "collinearTriangles": 6,
+          "components": 1
+        },
+        {
+          "name": "mixed-bare/tray-lid",
+          "triangles": 2406,
+          "vertices": 1205,
+          "min": [
+            -46.5,
+            -74.91999816894531,
+            0
+          ],
+          "max": [
+            46.5,
+            74.91999816894531,
+            8.800000190734863
+          ],
+          "volume": 67803.38232219894,
+          "collinearTriangles": 6,
+          "components": 1
+        }
+      ]
+    },
+    {
+      "name": "direction-front-retained",
+      "config": {
+        "version": 1,
+        "template": "inventory_tray",
+        "slots": [
+          {
+            "id": "62391ab7-940b-4a57-882b-f72a922d7252",
+            "type": "A",
+            "label": "5 NFC",
+            "occupied": true
+          },
+          {
+            "id": "32566646-a4aa-4a4c-9afa-2b2bc201b417",
+            "type": "C",
+            "label": "5C NFC",
+            "occupied": true
+          },
+          {
+            "id": "63dc772c-1d70-488d-9c2d-6483dc8b8a12",
+            "type": "AN",
+            "label": "5 Nano",
+            "occupied": true
+          },
+          {
+            "id": "ada52204-9bdf-4781-9b55-274141c74b19",
+            "type": "CN",
+            "label": "5C Nano",
+            "occupied": true
+          },
+          {
+            "id": "559a23cd-9221-4236-92be-81e111c01851",
+            "type": "CK",
+            "label": "5C",
+            "occupied": true
+          },
+          {
+            "id": "dd00926b-e4b5-4164-a0ab-5e859b4fa0aa",
+            "type": "CI",
+            "label": "5Ci",
+            "occupied": true
+          }
+        ],
+        "labels": true,
+        "labelSize": 4,
+        "options": {
+          "dock": {
+            "columns": 0,
+            "spacing": 26,
+            "rowSpacing": 45,
+            "edgeMargin": 18,
+            "depthMargin": 22.5,
+            "height": 13,
+            "title": "KEY DOCK"
+          },
+          "rail": {
+            "mountingHoles": true,
+            "endMargin": 5
+          },
+          "tray": {
+            "columns": 3,
+            "spacing": 24,
+            "rowSpacing": 76,
+            "rowGap": 8,
+            "margin": 5,
+            "height": 8.6,
+            "scoop": "large",
+            "retention": true,
+            "connection": "h20_slide_v7",
+            "slideDirection": "front",
+            "sideText": "Layer 1",
+            "lid": true,
+            "lidText": "H20 / V7",
+            "lidTextSize": 6,
+            "lidTextPercent": 100,
+            "lidTextRotation": 0,
+            "footprint": null
+          },
+          "grid": {
+            "mode": "mixed",
+            "extraHeight": 0
+          },
+          "case": {
+            "headroom": 0,
+            "title": "SECURITY KEYS"
+          },
+          "tester": {
+            "profile": "C",
+            "startOffset": -0.1,
+            "step": 0.1,
+            "samples": 3
+          },
+          "interfaceTests": {
+            "kind": "all"
+          }
+        }
+      },
+      "parts": [
+        {
+          "name": "direction-front-retained/tray",
+          "triangles": 20270,
+          "vertices": 10113,
+          "min": [
+            -48.5,
+            -74.91999816894531,
+            0
+          ],
+          "max": [
+            48.5,
+            74.91999816894531,
+            14.300000190734863
+          ],
+          "volume": 116691.66877927478,
+          "collinearTriangles": 43,
+          "components": 1
+        },
+        {
+          "name": "direction-front-retained/tray-lid",
+          "triangles": 2406,
+          "vertices": 1205,
+          "min": [
+            -48.5,
+            -74.91999816894531,
+            0
+          ],
+          "max": [
+            48.5,
+            74.91999816894531,
+            8.800000190734863
+          ],
+          "volume": 69891.11842873278,
+          "collinearTriangles": 5,
+          "components": 1
+        }
+      ]
+    },
+    {
+      "name": "direction-front-bare",
+      "config": {
+        "version": 1,
+        "template": "inventory_tray",
+        "slots": [
+          {
+            "id": "597209f6-65f7-4766-b5b1-94520f6f58c0",
+            "type": "A",
+            "label": "5 NFC",
+            "occupied": true
+          },
+          {
+            "id": "cb54de0e-ef62-4008-a131-e4d37984bfc2",
+            "type": "C",
+            "label": "5C NFC",
+            "occupied": true
+          },
+          {
+            "id": "30021816-039d-4c2c-a8e8-79edd31e4ead",
+            "type": "AN",
+            "label": "5 Nano",
+            "occupied": true
+          },
+          {
+            "id": "4802ab8b-e3d1-4af5-90c2-429ff7859b3c",
+            "type": "CN",
+            "label": "5C Nano",
+            "occupied": true
+          },
+          {
+            "id": "2d6e3b90-d6a9-42b0-b47f-7a0edc1748b4",
+            "type": "CK",
+            "label": "5C",
+            "occupied": true
+          },
+          {
+            "id": "7bdafb6d-4454-47bf-ab1a-b8dbb2bfe956",
+            "type": "CI",
+            "label": "5Ci",
+            "occupied": true
+          }
+        ],
+        "labels": true,
+        "labelSize": 4,
+        "options": {
+          "dock": {
+            "columns": 0,
+            "spacing": 26,
+            "rowSpacing": 45,
+            "edgeMargin": 18,
+            "depthMargin": 22.5,
+            "height": 13,
+            "title": "KEY DOCK"
+          },
+          "rail": {
+            "mountingHoles": true,
+            "endMargin": 5
+          },
+          "tray": {
+            "columns": 3,
+            "spacing": 24,
+            "rowSpacing": 76,
+            "rowGap": 8,
+            "margin": 5,
+            "height": 8.6,
+            "scoop": "large",
+            "retention": false,
+            "connection": "h20_slide_v7",
+            "slideDirection": "front",
+            "sideText": "Layer 1",
+            "lid": true,
+            "lidText": "H20 / V7",
+            "lidTextSize": 6,
+            "lidTextPercent": 100,
+            "lidTextRotation": 0,
+            "footprint": null
+          },
+          "grid": {
+            "mode": "mixed",
+            "extraHeight": 0
+          },
+          "case": {
+            "headroom": 0,
+            "title": "SECURITY KEYS"
+          },
+          "tester": {
+            "profile": "C",
+            "startOffset": -0.1,
+            "step": 0.1,
+            "samples": 3
+          },
+          "interfaceTests": {
+            "kind": "all"
+          }
+        }
+      },
+      "parts": [
+        {
+          "name": "direction-front-bare/tray",
+          "triangles": 18860,
+          "vertices": 9432,
+          "min": [
+            -47,
+            -74.91999816894531,
+            0
+          ],
+          "max": [
+            47,
+            74.91999816894531,
+            13.800000190734863
+          ],
+          "volume": 112368.55216318781,
+          "collinearTriangles": 4,
+          "components": 1
+        },
+        {
+          "name": "direction-front-bare/tray-lid",
+          "triangles": 2396,
+          "vertices": 1200,
+          "min": [
+            -47,
+            -74.91999816894531,
+            0
+          ],
+          "max": [
+            47,
+            74.91999816894531,
+            8.800000190734863
+          ],
+          "volume": 68325.3901351427,
+          "collinearTriangles": 4,
+          "components": 1
+        }
+      ]
+    }
+  ]
+}
