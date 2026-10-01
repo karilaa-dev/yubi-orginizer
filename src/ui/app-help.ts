@@ -37,7 +37,18 @@ export function updateCheckText(status: Pick<PwaStatus, 'online' | 'downloading'
   return "You're up to date.";
 }
 
-export function helpDialogMarkup(version: string, build: string): string {
+export interface BuildInfo { version: string; time: string; commit: string; commitUrl: string }
+
+/** "Version 1.0.0 · built 2026-09-30 17:40 UTC · commit 40e2627" (the commit links to GitHub when known). */
+export function aboutVersionMarkup({ version, time, commit, commitUrl }: BuildInfo): string {
+  const short = esc(commit.slice(0, 7));
+  const commitPart = !commit ? ''
+    : commitUrl ? ` · commit <a href="${esc(commitUrl)}" target="_blank" rel="noopener" title="${esc(commit)}">${short}</a>`
+    : ` · commit <span title="${esc(commit)}">${short}</span>`;
+  return `yubi-orginizer · Version ${esc(version)} · built ${esc(time)}${commitPart}`;
+}
+
+export function helpDialogMarkup(build: BuildInfo): string {
   return `<dialog id="help-dialog" class="dialog help-dialog" aria-labelledby="help-title">
     ${dialogHeading('help-title', 'Help')}
     <div class="help-content">
@@ -70,7 +81,7 @@ export function helpDialogMarkup(version: string, build: string): string {
       </section>
       <section aria-labelledby="help-about">
         <h3 id="help-about">About</h3>
-        <p class="about-version">yubi-orginizer · Version ${esc(version)} · build ${esc(build)}</p>
+        <p class="about-version">${aboutVersionMarkup(build)}</p>
         <div class="about-update">
           <button type="button" class="button secondary" data-action="check-updates">Check for updates</button>
           <span id="update-check-status" role="status"></span>

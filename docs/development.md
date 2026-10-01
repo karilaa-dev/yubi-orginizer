@@ -89,7 +89,14 @@ the source repository.
 
 ## Hosting and release checks
 
-Deploy the complete `dist/` directory over HTTPS at the origin root. Serve WASM
+Releases deploy to GitHub Pages through `.github/workflows/pages.yml`, which runs
+on every pushed tag (publishing a GitHub release creates one) and on manual runs.
+Before the first deployment, set **Settings › Pages › Source** to *GitHub Actions*,
+and in **Settings › Environments › github-pages** allow tags (for example `v*`)
+to deploy; by default only the default branch can.
+
+Deploy the complete `dist/` directory over HTTPS, built with `BASE_PATH` set to
+its sub-path when it is not served from the origin root. Serve WASM
 as `application/wasm` and JavaScript with a JavaScript MIME type. Preserve asset
 names and worker files. Revalidate `index.html` and `sw.js`; hashed assets can
 use immutable caching. Opening `index.html` through `file://` is unsupported.

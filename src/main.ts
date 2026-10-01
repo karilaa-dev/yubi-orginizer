@@ -70,7 +70,7 @@ byId('app').innerHTML = `
 </main>
 ${keyDialogMarkup()}
 ${downloadDialogMarkup()}
-${helpDialogMarkup(__APP_VERSION__, __BUILD_ID__)}
+${helpDialogMarkup({ version: __APP_VERSION__, time: __BUILD_TIME__, commit: __COMMIT_SHA__, commitUrl: __COMMIT_URL__ })}
 ${filamentDialogMarkup()}`;
 
 installDialogHandlers();

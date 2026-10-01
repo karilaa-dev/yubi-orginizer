@@ -103,10 +103,16 @@ checks, sample exports, optional Python tools, and hosting requirements.
 
 ## Hosting
 
-Serve the complete `dist/` directory from HTTPS at the **origin root**, or use
-localhost for testing. The current PWA uses `/` for its start URL and scope.
-A GitHub Pages project URL under `/repository-name/` needs corresponding Vite
-base-path and PWA configuration changes; it is not configured by default.
+Publishing a GitHub release deploys the site to GitHub Pages
+(`.github/workflows/pages.yml`): creating the release's tag runs the tests,
+builds under the Pages base path and deploys `dist/`. The workflow can also be
+run by hand from the Actions tab. **Help › About** shows the commit the build
+was made from, linked to GitHub.
+
+To host elsewhere, serve the complete `dist/` directory over HTTPS. Builds use
+`/` as the base path by default; set `BASE_PATH` (for example
+`BASE_PATH=/yubi-orginizer`) when building for a sub-path. The PWA start URL
+and scope follow it.
 
 ## Licensing and attribution
 
