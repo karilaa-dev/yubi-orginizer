@@ -1,5 +1,5 @@
 import type { HolderConfig, KeyPlacement, KeyType, PartSpec, ProjectGeometry, Slot, Vec3 } from '../types';
-import { scadCall, TRAY_RETENTION, TRAY_STACK, TRAY_STACK_PILLAR, TRAY_LID, KEY_LABEL_LAYOUT, trayRetentionBounds } from './library';
+import { scadCall, FRONT_TEXT_FIT, TRAY_RETENTION, TRAY_STACK, TRAY_STACK_PILLAR, TRAY_LID, KEY_LABEL_LAYOUT, trayRetentionBounds } from './library';
 import { lidExplodeOffset } from '../preview-layout';
 import { CI_INVENTORY_TOUCH_RELIEF } from './ci-touch';
 import { traySlideDirection } from '../tray-slide';
@@ -202,12 +202,58 @@ export function inventoryTraySupports(config: HolderConfig, t = inventoryTrayLay
   return supports;
 }
 
+/** Front-text size as a named SCAD argument. Omitted without text, and for projects saved without a size, so their SCAD is unchanged. */
+const frontTextArgs = (name: string, text: string, percent: number | undefined): Record<string, number> =>
+  percent === undefined || !text.slice(0, 32).length ? {} : { [name]: percent };
+
+/** The largest front text that fits the wall, as in front_title_cut. */
+export function frontTextMaxSize(text: string, width: number, height: number): number {
+  const length = Math.max(1, [...text.slice(0, 32)].length);
+  return Math.max(0, Math.min((width - FRONT_TEXT_FIT.sideInset) / (length * FRONT_TEXT_FIT.charWidth), height - FRONT_TEXT_FIT.verticalClearance));
+}
+
+/** Front text of the current organizer type: its engraved size, and that size as a percentage of what fits
+ * (for projects saved without a percentage, the one that matches their original size). */
+export function frontTextFit(config: HolderConfig): { text: string; percent: number; size: number } {
+  const dock = config.template === 'desktop_dock';
+  const text = dock ? config.options.dock.title : config.options.tray.sideText;
+  const saved = dock ? config.options.dock.titlePercent : config.options.tray.sideTextPercent;
+  const box = dock ? dockLayout(config) : inventoryTrayLayout(config);
+  const max = config.slots.length || box.width ? frontTextMaxSize(text, box.width, box.height) : 0;
+  if (saved !== undefined) return { text, percent: saved, size: max * saved / 100 };
+  const size = Math.min(FRONT_TEXT_FIT.legacySize, max);
+  return { text, percent: max > 0 ? Math.round(size / max * 1000) / 10 : 100, size };
+}
+
 function trayScad(config: HolderConfig, t: ReturnType<typeof inventoryTrayLayout>): string {
   const args: unknown[] = [config.slots.map((s) => s.type), labels(config), t.xy, t.width, t.depth, t.height, t.scoopRadius, t.labelWidth,
     config.options.tray.retention ?? true, config.options.tray.connection !== 'none', (config.options.tray.sideText ?? '').slice(0, 32), inventoryTraySupports(config),
     keyLabelMetrics(config).scale, config.options.tray.lid ?? false];
   if (trayH20Enabled(config)) args.push(traySlideDirection(config.options.tray.slideDirection).angle);
-  return scadCall(traySnapEnabled(config) ? 'inventory_tray_snap' : trayH20Enabled(config) ? 'inventory_tray_h20' : 'inventory_tray', args);
+  return scadCall(traySnapEnabled(config) ? 'inventory_tray_snap' : trayH20Enabled(config) ? 'inventory_tray_h20' : 'inventory_tray', args,
+    frontTextArgs('side_text_percent', config.options.tray.sideText, config.options.tray.sideTextPercent));
+}
+
+/** A slide-lock layer's move from flush back to its entry position (the reverse of locking). */
+export function traySlideRelease(config: HolderConfig): Vec3 {
+  const [x, y] = traySlideDirection(config.options.tray.slideDirection).releaseAxis;
+  return [x * H20_V7.travel, y * H20_V7.travel, 0];
+}
+
+/** Desktop dock footprint and socket positions. */
+export function dockLayout(config: HolderConfig) {
+  const n = Math.max(1, config.slots.length);
+  const cols = columnsFor(n, config.options.dock.columns);
+  const rows = Math.ceil(n / cols);
+  const spacing = clamp(config.options.dock.spacing, 22, 40);
+  const rowSpacing = clamp(config.options.dock.rowSpacing ?? 45, 18, 70);
+  const edgeMargin = clamp(config.options.dock.edgeMargin ?? 18, 12, 40);
+  const depthMargin = clamp(config.options.dock.depthMargin ?? 22.5, 18, 45);
+  return {
+    columns: cols, height: clamp(config.options.dock.height, 11, 25),
+    width: (cols - 1) * spacing + 2 * edgeMargin, depth: (rows - 1) * rowSpacing + 2 * depthMargin,
+    xy: layout(config.slots.length, cols, spacing, rowSpacing, 3),
+  };
 }
 
 /** Every part is a printable millimetre-space solid at Z=0. Assembly transforms
@@ -220,22 +266,14 @@ export function buildProject(config: HolderConfig): ProjectGeometry {
   const labelHeight = ls.some((s) => s.trim().length > 0) ? 0.35 : 0;
   switch (config.template) {
     case 'desktop_dock': {
-      const cols = columnsFor(n, config.options.dock.columns);
-      const rows = Math.ceil(n / cols);
-      const spacing = clamp(config.options.dock.spacing, 22, 40);
-      const rowSpacing = clamp(config.options.dock.rowSpacing ?? 45, 18, 70);
-      const edgeMargin = clamp(config.options.dock.edgeMargin ?? 18, 12, 40);
-      const depthMargin = clamp(config.options.dock.depthMargin ?? 22.5, 18, 45);
-      const h = clamp(config.options.dock.height, 11, 25);
-      const w = (cols - 1) * spacing + 2 * edgeMargin;
-      const d = (rows - 1) * rowSpacing + 2 * depthMargin;
-      const xy = layout(n, cols, spacing, rowSpacing, 3);
+      const { width: w, depth: d, height: h, xy } = dockLayout(config);
       // These three products share the same calibrated standard USB-C socket.
       // Normalize only the cutter IDs; labels and preview references retain the
       // user's selected model, including the high-Y USB-C end of 5C and 5Ci.
       const socketTypes = types.map((type) => type === 'CK' || type === 'CI' ? 'C' : type);
       return {
-        parts: [part('dock', 'Desktop dock', scadCall('dock', [socketTypes, ls, xy, w, d, h, config.options.dock.title.slice(0, 32), keyLabelMetrics(config).scale]))],
+        parts: [part('dock', 'Desktop dock', scadCall('dock', [socketTypes, ls, xy, w, d, h, config.options.dock.title.slice(0, 32), keyLabelMetrics(config).scale],
+          frontTextArgs('title_percent', config.options.dock.title, config.options.dock.titlePercent)))],
         keys: placements(config.slots, xy, h, false, 'dock'),
         dimensions: [w, d, h + labelHeight],
       };
@@ -262,7 +300,9 @@ export function buildProject(config: HolderConfig): ProjectGeometry {
         if (snap) parts.push(part('tray-lid', 'Tray lid', scadCall(percent === undefined ? 'tray_snap_lid_legacy' : 'tray_snap_lid', lidArgs), [0, 0, t.height + gap], '#597f91', zero(), [t.width + 8, 0, -(t.height + gap)]));
         else if (h20 || config.options.tray.lidStyle === 'minimal') {
           const module = h20 ? 'inventory_tray_h20_lid' + suffix : 'inventory_tray_lid_minimal' + (percent === undefined ? '' : '_percent');
-          parts.push(part('tray-lid', config.options.tray.lidStyle === 'minimal' ? 'Minimal lid' : 'Regular lid', scadCall(module, lidArgs), [0, 0, t.height + gap], '#597f91', zero(), [t.width + 8, 0, -(t.height + gap)]));
+          const lid = part('tray-lid', config.options.tray.lidStyle === 'minimal' ? 'Minimal lid' : 'Regular lid', scadCall(module, lidArgs), [0, 0, t.height + gap], '#597f91', zero(), [t.width + 8, 0, -(t.height + gap)]);
+          if (h20) lid.release = traySlideRelease(config);
+          parts.push(lid);
         } else parts.push(part('tray-lid', 'Tray lid', scadCall('inventory_tray_lid' + suffix, lidArgs), [0, 0, lidTop], '#597f91', [Math.PI, 0, 0], lidExplodeOffset(t.width, lidTop, lidThickness)));
       }
       return {

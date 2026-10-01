@@ -91,13 +91,13 @@ module h20_lands(w,d,h,gap) {
   for(g=h20_guides(w,d)) translate([g[0]-6,g[1]-5,h-eps])
     cube([12,10,gap+eps]);
 }
-module inventory_tray_h20(ks,ls,xy,w,d,h=8.6,scoop_r=6,label_width=23,retention=true,stackable=true,side_text="",support_xy=[],label_scale=1,has_lid=false,direction=0) {
+module inventory_tray_h20(ks,ls,xy,w,d,h=8.6,scoop_r=6,label_width=23,retention=true,stackable=true,side_text="",support_xy=[],label_scale=1,has_lid=false,direction=0,side_text_percent=undef) {
   gap=tray_stack_gap(retention);
   frame=h20_frame_size(w,d,direction);
   union() {
     difference() {
       union() {
-        inventory_tray(ks,ls,xy,w,d,h,scoop_r,label_width,retention,false,side_text,[],label_scale,false);
+        inventory_tray(ks,ls,xy,w,d,h,scoop_r,label_width,retention,false,side_text,[],label_scale,false,side_text_percent);
         rotate([0,0,direction]) h20_lands(frame[0],frame[1],h,gap);
         tray_stack_pillars(support_xy,h,gap);
       }

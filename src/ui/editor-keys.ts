@@ -8,10 +8,10 @@ import { icon, keyIcon } from '../icons';
 import { keyLabelPercent } from '../text-size';
 import type { HolderConfig, KeyType, Slot } from '../types';
 import { esc, plural } from './dom';
-import { sliderField, switchField } from './editor-fields';
+import { inlineSegmentedField, inlineSliderField, switchField } from './editor-fields';
+import { COLUMN_OPTIONS, organizerTypeMarkup } from './editor-settings';
 
-/** data-option / error ids that live in the Keys tab rather than in a settings group. */
-export const isKeysControl = (id: string): boolean => id === 'labels' || id === 'labelSize' || id.startsWith('label-');
+export { isKeysControl } from './settings-model';
 
 /* ───────────── Pure list operations ───────────── */
 
@@ -84,19 +84,26 @@ function keyRow(slot: Slot, index: number, count: number, draggable: boolean): s
   </li>`;
 }
 
-export function keysPanelMarkup(config: HolderConfig, options: { draggable: boolean }): string {
+export function keysPanelMarkup(config: HolderConfig, options: { draggable: boolean; dockNotice?: boolean }): string {
   const { slots } = config;
+  const type = organizerTypeMarkup(config.template, options.dockNotice ?? false);
   if (!slots.length) {
-    return `<div class="keys-empty">${icon('plus', 'keys-empty-icon')}<p>No keys yet</p>
+    return `<div class="panel-section keys-top">${type}</div><div class="keys-empty">${icon('plus', 'keys-empty-icon')}<p>No keys yet</p>
       <button type="button" class="button primary" data-action="add">${icon('plus')}Add keys</button></div>`;
   }
   const full = slots.length >= MAX_SLOTS;
-  const labels = `<div class="label-strip">
-      ${switchField({ id: 'labels', label: 'Print labels', checked: config.labels })}
-      <div class="label-size"${config.labels ? '' : ' hidden'}>${sliderField({ id: 'labelSize', label: 'Label size', value: keyLabelPercent(config.labelSize), min: 37.5, max: 100, step: 2.5, unit: '%' })}</div>
-      <p id="labels-off-note" class="field-hint"${config.labels ? ' hidden' : ''}>Labels won't be printed.</p>
+  const columns = config.template === 'desktop_dock' ? config.options.dock.columns : config.options.tray.columns;
+  const columnsId = config.template === 'desktop_dock' ? 'dock.columns' : 'tray.columns';
+  const top = `<div class="panel-section keys-top">
+      ${type}
+      ${inlineSegmentedField({ id: columnsId, legend: 'Columns', options: COLUMN_OPTIONS, value: columns, numeric: true, className: 'columns-field' })}
+      <div class="text-setting">
+        ${switchField({ id: 'labels', label: 'Print labels', checked: config.labels })}
+        <div class="text-options label-size"${config.labels ? '' : ' hidden'}>${inlineSliderField({ id: 'labelSize', label: 'Size', spoken: 'Label size', value: keyLabelPercent(config.labelSize), min: 37.5, max: 100, step: 2.5, unit: '%' })}</div>
+        <p id="labels-off-note" class="field-hint"${config.labels ? ' hidden' : ''}>Labels won't be printed.</p>
+      </div>
     </div>`;
-  return `${labels}
+  return `${top}
     <p id="reorder-help" class="sr-only">Use the Move up and Move down buttons, or press Arrow Up or Arrow Down here.</p>
     <p id="label-reorder-help" class="sr-only">Alt+Arrow Up or Alt+Arrow Down moves this key.</p>
     <ol class="key-list" aria-label="Keys in this organizer">${slots.map((slot, i) => keyRow(slot, i, slots.length, options.draggable)).join('')}</ol>

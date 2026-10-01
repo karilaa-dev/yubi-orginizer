@@ -1,34 +1,35 @@
 /**
- * Tray settings / Dock settings tab (#settings-panel).
+ * Size tab (#size-panel) and Tray settings / Dock settings tab (#settings-panel).
  *
- * `settingsPanelMarkup()` renders the organizer-type switch and the <details> groups from
- * TRAY_GROUPS / DOCK_GROUPS. After every change `syncSettingsPanel()` applies the pure
- * settings model in place: visibility, disabled state, minimums, hints, summaries, modified
- * dots, error marks and the Stacking / Size readouts. Values the user is typing are kept.
+ * `sizePanelMarkup()` renders the Size and Spacing sections from SIZE_SECTIONS;
+ * `settingsPanelMarkup()` renders the <details> groups from TRAY_GROUPS / DOCK_GROUPS
+ * (the organizer-type switch is at the top of the Keys tab: `organizerTypeMarkup()`). After every change `syncSettingsPanel()` applies the pure
+ * settings model in place to both tabs (and Columns in the Keys tab): visibility, disabled
+ * state, minimums, hints, summaries, modified dots, error marks and the Stacking / Size
+ * readouts. Values the user is typing are kept.
  */
-import { TEMPLATES } from '../config';
-import { inventoryTrayLayout } from '../geometry';
+import { FRONT_TEXT_PERCENT, TEMPLATES } from '../config';
+import { frontTextFit, inventoryTrayLayout } from '../geometry';
 import { icon } from '../icons';
 import type { HolderConfig, TemplateId, TrayConnection } from '../types';
 import { esc, fmt } from './dom';
 import {
-  clearFieldError, fieldNotes, numberField, numberValue, segmentedField, setControlValue, setHint, sliderField, switchField, textField,
+  clearFieldError, fieldNotes, inlineSegmentedField, inlineSliderField, numberField, numberValue, segmentedField, setControlValue, setHint,
+  sliderField, switchField, textSettingField,
 } from './editor-fields';
 import {
-  CONNECTION_OPTIONS, DOCK_GROUPS, SLIDE_DIRECTION_OPTIONS, TRAY_GROUPS, dockSettingsState, traySettingsState,
+  CONNECTION_OPTIONS, DOCK_GROUPS, SIZE_SECTIONS, SLIDE_DIRECTION_OPTIONS, TRAY_GROUPS, dockSettingsState, footprintChoice, traySettingsState,
   trayMinimumHeight, trayMinimumMargin,
-  type ControlState, type DockSettingsState, type GroupId, type GroupState, type TraySettingsState,
+  type ControlState, type DockSettingsState, type FootprintMatch, type GroupId, type GroupState, type MatchState, type TraySettingsState,
 } from './settings-model';
 
 export const DOCK_NOTICE = 'Dock fit is still being tuned. Print a one-key dock first.';
 
-const COLUMN_OPTIONS = [0, 1, 2, 3, 4, 5, 6].map(n => ({ value: n, label: n === 0 ? 'Auto' : String(n) }));
+export const COLUMN_OPTIONS = [0, 1, 2, 3, 4, 5, 6].map(n => ({ value: n, label: n === 0 ? 'Auto' : String(n) }));
 
 export interface SettingsMarkupOptions {
   /** Groups rendered open. */
   open: ReadonlySet<string>;
-  /** Show the dock notice (dock only, until dismissed). */
-  dockNotice: boolean;
 }
 
 function group(id: GroupId, title: string, open: boolean, body: string): string {
@@ -47,13 +48,11 @@ function organizerType(template: TemplateId): string {
     return `<label><input type="radio" name="organizer-type" value="${t.id}" data-template-switch${checked}/>`
       + `<span>${icon(t.icon)}${esc(t.name)}${badge}</span></label>`;
   }).join('');
-  return `<fieldset class="segmented-field type-field"><legend>Organizer type</legend><div class="segmented segmented-large">${options}</div></fieldset>`;
+  return `<fieldset class="segmented-field type-field"><legend>Organizer type</legend><div class="segmented">${options}</div></fieldset>`;
 }
 
 function trayGroups(config: HolderConfig, open: ReadonlySet<string>): string {
   const t = config.options.tray;
-  const layout = inventoryTrayLayout(config);
-  const minHeight = trayMinimumHeight(config), minMargin = trayMinimumMargin(config);
   const connections = CONNECTION_OPTIONS.filter(o => o.value !== 'snap_fit' || t.connection === 'snap_fit');
   const cards = connections.map(o => {
     const checked = t.connection === o.value ? ' checked' : '';
@@ -62,10 +61,8 @@ function trayGroups(config: HolderConfig, open: ReadonlySet<string>): string {
       + `<span class="option-title">${esc(o.title)}</span><small>${esc(o.description)}</small>${note}</label>`;
   }).join('');
 
+  const frontSize = frontTextSizeField('tray.sideTextPercent', config);
   const bodies: Record<string, string> = {
-    layout: segmentedField({ id: 'tray.columns', legend: 'Columns', options: COLUMN_OPTIONS, value: t.columns, numeric: true, className: 'columns-field' })
-      + sliderField({ id: 'tray.spacing', label: 'Column spacing', value: t.spacing, min: 24, max: 42, step: 0.5 })
-      + sliderField({ id: 'tray.rowGap', label: 'Row spacing', value: t.rowGap, min: 2, max: 40, step: 0.5 }),
     stacking: `<fieldset class="option-cards" data-control="tray.connection" aria-describedby="hint-tray.connection error-tray.connection"><legend>Connection</legend>${cards}${fieldNotes('tray.connection')}</fieldset>`
       + segmentedField({
         id: 'tray.slideDirection', legend: 'Slide direction', options: SLIDE_DIRECTION_OPTIONS, value: t.slideDirection, className: 'direction-field',
@@ -77,48 +74,92 @@ function trayGroups(config: HolderConfig, open: ReadonlySet<string>): string {
     lid: switchField({ id: 'tray.lid', label: 'Add lid', checked: t.lid })
       + segmentedField({ id: 'tray.lidStyle', legend: 'Style', options: [{ value: 'regular', label: 'Regular' }, { value: 'minimal', label: 'Minimal' }], value: t.lidStyle })
       + '<p id="lid-style-note" class="field-hint" hidden></p>'
-      + textField({ id: 'tray.lidText', label: 'Lid text', value: t.lidText })
-      + sliderField({ id: 'tray.lidTextPercent', label: 'Text size', value: t.lidTextPercent ?? 100, min: 0.1, max: 100, step: 0.1, unit: '%', disabled: t.lidTextPercent === undefined })
-      + segmentedField({ id: 'tray.lidTextRotation', legend: 'Rotation', options: [0, 90, 180, 270].map(r => ({ value: r, label: `${r}°` })), value: t.lidTextRotation ?? 0, numeric: true }),
-    size: segmentedField({
-        id: 'tray.sizeLocked', legend: 'Footprint', options: [{ value: 'fit', label: 'Fit to keys' }, { value: 'fixed', label: 'Fixed size' }],
-        value: t.footprint ? 'fixed' : 'fit', after: '<p id="tray-size-readout" class="size-readout"></p>',
-      })
-      // The size readout says what the keys need, and why the size is an error when it is too small.
-      + `<div class="dimension-fields">${numberField({ id: 'tray.width', label: 'Width', value: layout.width || 80, min: 20, max: 1000, step: 0.01, describedBy: 'tray-size-readout' })}`
-      + `${numberField({ id: 'tray.depth', label: 'Depth', value: layout.depth || 80, min: 20, max: 6000, step: 0.01, describedBy: 'tray-size-readout' })}</div>`
-      + '<button type="button" id="grow-footprint" class="button secondary compact grow-button" data-action="grow-footprint" hidden></button>'
-      + sliderField({ id: 'tray.height', label: 'Height', value: Math.max(t.height, minHeight), min: minHeight, max: 20, step: 0.1 })
-      + sliderField({ id: 'tray.margin', label: 'Edge margin', value: Math.max(t.margin, minMargin), min: minMargin, max: 20, step: 0.5 }),
+      + textSettingField({ id: 'tray.lidText', label: 'Lid text', value: t.lidText },
+        inlineSliderField({ id: 'tray.lidTextPercent', label: 'Size', spoken: 'Lid text size', value: t.lidTextPercent ?? 100, min: 0.1, max: 100, step: 0.1, unit: '%', disabled: t.lidTextPercent === undefined })
+        + inlineSegmentedField({ id: 'tray.lidTextRotation', legend: 'Rotation', spoken: 'Lid text rotation', options: [0, 90, 180, 270].map(r => ({ value: r, label: `${r}°` })), value: t.lidTextRotation ?? 0, numeric: true })),
     pockets: segmentedField({ id: 'tray.scoop', legend: 'Finger scoop', options: [{ value: 'small', label: 'Small' }, { value: 'default', label: 'Standard' }, { value: 'large', label: 'Large' }], value: t.scoop })
-      + switchField({ id: 'tray.retention', label: 'Retention tabs', checked: t.retention })
-      + textField({ id: 'tray.sideText', label: 'Front text', value: t.sideText }),
+      + switchField({ id: 'tray.retention', label: 'Retention tabs', checked: t.retention, badge: 'Untested' })
+      + textSettingField({ id: 'tray.sideText', label: 'Front text', value: t.sideText }, frontSize),
   };
   return TRAY_GROUPS.map(g => group(g.id, g.title, open.has(g.id), bodies[g.id])).join('');
 }
 
+/** Front text Size: percent of the largest text that fits the front wall. */
+const frontTextSizeField = (id: string, config: HolderConfig): string => inlineSliderField({
+  id, label: 'Size', spoken: 'Front text size', value: frontTextFit(config).percent,
+  min: FRONT_TEXT_PERCENT.min, max: FRONT_TEXT_PERCENT.max, step: 1, unit: '%',
+});
+
 function dockGroups(config: HolderConfig, open: ReadonlySet<string>): string {
   const d = config.options.dock;
   const bodies: Record<string, string> = {
-    layout: segmentedField({ id: 'dock.columns', legend: 'Columns', options: COLUMN_OPTIONS, value: d.columns, numeric: true, className: 'columns-field' })
-      + sliderField({ id: 'dock.spacing', label: 'Column spacing', value: d.spacing, min: 22, max: 40, step: 0.5 })
-      + sliderField({ id: 'dock.rowSpacing', label: 'Row spacing', value: d.rowSpacing, min: 18, max: 70, step: 0.5 }),
-    size: sliderField({ id: 'dock.height', label: 'Base height', value: d.height, min: 11, max: 25, step: 0.5 })
-      + sliderField({ id: 'dock.edgeMargin', label: 'Side margin', value: d.edgeMargin, min: 12, max: 40, step: 0.5 })
-      + sliderField({ id: 'dock.depthMargin', label: 'Front & back margin', value: d.depthMargin, min: 18, max: 45, step: 0.5 }),
-    text: textField({ id: 'dock.title', label: 'Front text', value: d.title }),
+    text: textSettingField({ id: 'dock.title', label: 'Front text', value: d.title }, frontTextSizeField('dock.titlePercent', config)),
   };
   return DOCK_GROUPS.map(g => group(g.id, g.title, open.has(g.id), bodies[g.id])).join('');
 }
 
-export function settingsPanelMarkup(config: HolderConfig, options: SettingsMarkupOptions): string {
-  const dock = config.template === 'desktop_dock';
-  const notice = dock && options.dockNotice
+export interface SizeMarkupOptions {
+  /** Size › Footprint › Match project state. */
+  match: MatchState;
+  /** Other saved trays whose width and depth can be copied. */
+  candidates: readonly FootprintMatch[];
+}
+
+const section = (id: string, title: string, body: string): string =>
+  `<section class="size-section" data-section="${id}" aria-labelledby="section-${id}"><h3 id="section-${id}" class="section-title">${esc(title)}</h3>${body}</section>`;
+
+const FOOTPRINT_OPTIONS = [{ value: 'fit', label: 'Fit to keys' }, { value: 'fixed', label: 'Fixed size' }, { value: 'match', label: 'Match project' }];
+
+function matchField(options: SizeMarkupOptions): string {
+  const selected = options.match && options.match !== 'choosing' ? options.match.id : '';
+  const items = options.candidates.map(c => `<option value="${esc(c.id)}"${c.id === selected ? ' selected' : ''}>${esc(c.name)} · ${fmt(c.width)} × ${fmt(c.depth)} mm</option>`).join('');
+  const empty = options.candidates.length ? 'Choose a tray…' : 'No other trays on this device yet';
+  return `<div class="field match-field" data-match hidden><label for="match-project">Copy width and depth from</label>`
+    + `<select id="match-project"${options.candidates.length ? '' : ' disabled'}><option value=""${selected ? '' : ' selected'}>${empty}</option>${items}</select></div>`;
+}
+
+/** Size tab: outside size on top, spacing below. */
+export function sizePanelMarkup(config: HolderConfig, options: SizeMarkupOptions): string {
+  const titles = Object.fromEntries(SIZE_SECTIONS[config.template].map(s => [s.id, s.title]));
+  if (config.template === 'desktop_dock') {
+    const d = config.options.dock;
+    return section('size', titles.size, '<p id="dock-size-readout" class="size-readout"></p>'
+        + sliderField({ id: 'dock.height', label: 'Base height', value: d.height, min: 11, max: 25, step: 0.5 }))
+      + section('spacing', titles.spacing, sliderField({ id: 'dock.spacing', label: 'Column spacing', value: d.spacing, min: 22, max: 40, step: 0.5 })
+        + sliderField({ id: 'dock.rowSpacing', label: 'Row spacing', value: d.rowSpacing, min: 18, max: 70, step: 0.5 })
+        + sliderField({ id: 'dock.edgeMargin', label: 'Side margin', value: d.edgeMargin, min: 12, max: 40, step: 0.5 })
+        + sliderField({ id: 'dock.depthMargin', label: 'Front & back margin', value: d.depthMargin, min: 18, max: 45, step: 0.5 }));
+  }
+  const t = config.options.tray;
+  const layout = inventoryTrayLayout(config);
+  const minHeight = trayMinimumHeight(config), minMargin = trayMinimumMargin(config);
+  return section('size', titles.size, segmentedField({
+        id: 'tray.sizeLocked', legend: 'Footprint', options: FOOTPRINT_OPTIONS, value: footprintChoice(config, options.match),
+        className: 'footprint-field', after: '<p id="tray-size-readout" class="size-readout"></p>',
+      })
+      + matchField(options)
+      // The size readout says what the keys need, and why the size is an error when it is too small.
+      + `<div class="dimension-fields">${numberField({ id: 'tray.width', label: 'Width', value: layout.width || 80, min: 20, max: 1000, step: 0.01, describedBy: 'tray-size-readout' })}`
+      + `${numberField({ id: 'tray.depth', label: 'Depth', value: layout.depth || 80, min: 20, max: 6000, step: 0.01, describedBy: 'tray-size-readout' })}</div>`
+      + '<button type="button" id="grow-footprint" class="button secondary compact grow-button" data-action="grow-footprint" hidden></button>'
+      + sliderField({ id: 'tray.height', label: 'Height', value: Math.max(t.height, minHeight), min: minHeight, max: 20, step: 0.1 }))
+    + section('spacing', titles.spacing, sliderField({ id: 'tray.spacing', label: 'Column spacing', value: t.spacing, min: 24, max: 42, step: 0.5 })
+      + sliderField({ id: 'tray.rowGap', label: 'Row spacing', value: t.rowGap, min: 2, max: 40, step: 0.5 })
+      + sliderField({ id: 'tray.margin', label: 'Edge margin', value: Math.max(t.margin, minMargin), min: minMargin, max: 20, step: 0.5 }));
+}
+
+/** Organizer type switch, and the dock notice (dock only, until dismissed). Top of the Keys tab. */
+export function organizerTypeMarkup(template: TemplateId, dockNotice: boolean): string {
+  const notice = template === 'desktop_dock' && dockNotice
     ? `<div id="dock-notice" class="callout warn dock-notice">${icon('alert')}<span class="callout-text">${DOCK_NOTICE}</span>`
       + '<button type="button" class="button quiet compact" data-action="dismiss-dock-notice">Got it</button></div>'
     : '';
-  return `<div class="settings-top">${organizerType(config.template)}${notice}</div>
-    <div class="groups">${dock ? dockGroups(config, options.open) : trayGroups(config, options.open)}</div>`;
+  return organizerType(template) + notice;
+}
+
+export function settingsPanelMarkup(config: HolderConfig, options: SettingsMarkupOptions): string {
+  const dock = config.template === 'desktop_dock';
+  return `<div class="groups">${dock ? dockGroups(config, options.open) : trayGroups(config, options.open)}</div>`;
 }
 
 /* ───────────── In-place sync ───────────── */
@@ -132,6 +173,7 @@ export function controlValue(config: HolderConfig, id: string): string | number 
   }
   if (id === 'tray.lidTextPercent') return config.options.tray.lidTextPercent ?? 100;
   if (id === 'tray.lidTextRotation') return config.options.tray.lidTextRotation ?? 0;
+  if (id === 'tray.sideTextPercent' || id === 'dock.titlePercent') return frontTextFit(config).percent;
   if (id === 'tray.height') return Math.max(config.options.tray.height, trayMinimumHeight(config));
   if (id === 'tray.margin') return Math.max(config.options.tray.margin, trayMinimumMargin(config));
   const [section, name] = id.split('.');
@@ -154,9 +196,9 @@ export interface SyncMemory {
  * Applies the settings model to the rendered panel. Errors of controls that are hidden or
  * disabled are dropped from `errors` (and their inputs reset), so they never block generation.
  */
-export function syncSettingsPanel(root: HTMLElement, config: HolderConfig, errors: Map<string, string>, memory: SyncMemory): TraySettingsState | DockSettingsState {
+export function syncSettingsPanel(root: HTMLElement, config: HolderConfig, errors: Map<string, string>, memory: SyncMemory, match?: MatchState): TraySettingsState | DockSettingsState {
   const compute = () => config.template === 'inventory_tray'
-    ? traySettingsState(config, new Set(errors.keys()))
+    ? traySettingsState(config, new Set(errors.keys()), match)
     : dockSettingsState(config, new Set(errors.keys()));
   let state = compute();
   const controls = state.controls as Record<string, ControlState>;
@@ -181,8 +223,10 @@ export function syncSettingsPanel(root: HTMLElement, config: HolderConfig, error
   if (dropped) state = compute();
 
   // Keep derived values current unless the user is typing in that field.
-  for (const id of ['tray.height', 'tray.margin', 'tray.width', 'tray.depth']) {
-    if (config.template !== 'inventory_tray' || errors.has(id) || isFocused(root, id)) continue;
+  // (A project saved without a front text percentage shows the one that matches its size.)
+  const derived = config.template === 'inventory_tray' ? ['tray.height', 'tray.margin', 'tray.width', 'tray.depth', 'tray.sideTextPercent'] : ['dock.titlePercent'];
+  for (const id of derived) {
+    if (errors.has(id) || isFocused(root, id)) continue;
     const value = controlValue(config, id);
     if (typeof value !== 'number') continue;
     for (const input of root.querySelectorAll<HTMLInputElement>(`[data-option="${id}"]`)) {
@@ -192,6 +236,10 @@ export function syncSettingsPanel(root: HTMLElement, config: HolderConfig, error
 
   syncGroups(root, state.groups, memory);
   if ('stacking' in state) syncTray(root, state, errors);
+  else {
+    const readout = root.querySelector<HTMLElement>('#dock-size-readout');
+    if (readout) readout.textContent = state.size.readout;
+  }
   return state;
 }
 
@@ -225,6 +273,13 @@ function syncTray(root: HTMLElement, state: TraySettingsState, errors: ReadonlyM
     lock.hidden = state.stacking.lockLabel === null;
     lock.textContent = state.stacking.lockLabel ?? '';
   }
+
+  // Grow, Undo and other windows change the footprint: the segment follows the config.
+  for (const radio of root.querySelectorAll<HTMLInputElement>('[data-option="tray.sizeLocked"]')) {
+    if (!errors.has('tray.sizeLocked')) radio.checked = radio.value === state.size.choice;
+  }
+  const match = root.querySelector<HTMLElement>('[data-match]');
+  if (match) match.hidden = state.size.choice !== 'match';
 
   const readout = root.querySelector<HTMLElement>('#tray-size-readout');
   if (readout) {

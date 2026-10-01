@@ -4,7 +4,7 @@ import type { HolderConfig } from '../src/types';
 import { offlineStatusText, updateCheckText } from '../src/ui/app-help';
 import { fieldErrorText, numberField, sliderField } from '../src/ui/editor-fields';
 import { catalogMarkup, catalogTotalText, dropIndex, isKeysControl, keysPanelMarkup, reinsertSlot, removeOneOfType, removedMessage } from '../src/ui/editor-keys';
-import { controlValue, settingsPanelMarkup, snapFitRangeError, withConnection, withTemplate } from '../src/ui/editor-settings';
+import { controlValue, settingsPanelMarkup, sizePanelMarkup, snapFitRangeError, withConnection, withTemplate } from '../src/ui/editor-settings';
 import {
   createErrorAnnouncer, downloadButtonState, downloadDialogStatus, fileSizeText, formatNote, generationLabel, gramsText, isOfflineSetupFailure,
   mobileStatusText, partSelectValue, preparingLabel, previewOverlay, primaryDownloadLabel, printTip,
@@ -154,6 +154,7 @@ describe('Download dialog labels', () => {
 
   it('gives one material tip per tray connection', () => {
     const c = tray();
+    c.options.tray.retention = true;
     expect(printTip(c)).toBe('Print in PETG so the retention tabs can flex.');
     c.options.tray.connection = 'h20_slide_v7';
     expect(printTip(c)).toMatch(/^Use the same material as your H20 reference/);
@@ -239,7 +240,7 @@ describe('Settings fields', () => {
   });
 
   it('ties the tray size readout to Width and Depth', () => {
-    const html = settingsPanelMarkup(tray(), { open: new Set(), dockNotice: false });
+    const html = sizePanelMarkup(tray(), { match: undefined, candidates: [] });
     expect(html).toContain('aria-describedby="hint-tray.width error-tray.width tray-size-readout"');
     expect(html).toContain('aria-describedby="hint-tray.depth error-tray.depth tray-size-readout"');
   });
@@ -307,27 +308,38 @@ describe('Undo of a type switch or snap-fit replacement', () => {
 });
 
 describe('Settings panel markup', () => {
-  it('wraps every model control in [data-control]', () => {
-    const trayHtml = settingsPanelMarkup(tray(), { open: new Set(['layout']), dockNotice: true });
-    for (const id of TRAY_CONTROLS) expect(trayHtml, id).toContain(`data-control="${id}"`);
+  it('wraps every model control in [data-control], in the Keys, Size or settings tab', () => {
+    const tabs = (c: HolderConfig) => [
+      keysPanelMarkup(c, { draggable: false }),
+      sizePanelMarkup(c, { match: undefined, candidates: [] }),
+      settingsPanelMarkup(c, { open: new Set() }),
+    ];
+    const trayHtml = settingsPanelMarkup(tray(), { open: new Set() });
+    const all = tabs(tray()).join('');
+    for (const id of TRAY_CONTROLS) expect(all, id).toContain(`data-control="${id}"`);
+    expect(tabs(tray())[0]).toContain('data-control="tray.columns"');
+    expect(tabs(tray())[0]).toContain('data-template-switch');
+    expect(tabs(tray())[2]).not.toContain('data-template-switch');
+    expect(tabs(tray())[1]).toContain('data-control="tray.spacing"');
     expect(trayHtml).not.toContain('Snap-fit (from an older version)');
     expect(trayHtml).not.toContain('dock-notice');
     expect(trayHtml).not.toContain('rotate-lid-text');
-    const dockHtml = settingsPanelMarkup({ ...tray(), template: 'desktop_dock' }, { open: new Set(), dockNotice: true });
-    for (const id of DOCK_CONTROLS) expect(dockHtml, id).toContain(`data-control="${id}"`);
+    const dock = { ...tray(), template: 'desktop_dock' as const };
+    const dockHtml = keysPanelMarkup(dock, { draggable: false, dockNotice: true });
+    for (const id of DOCK_CONTROLS) expect(tabs(dock).join(''), id).toContain(`data-control="${id}"`);
     expect(dockHtml).toContain('Dock fit is still being tuned. Print a one-key dock first.');
   });
 
   it('keeps the retired snap-fit card only while it is selected', () => {
     const c = tray();
     c.options.tray.connection = 'snap_fit';
-    expect(settingsPanelMarkup(c, { open: new Set(), dockNotice: false })).toContain('Snap-fit (from an older version)');
+    expect(settingsPanelMarkup(c, { open: new Set() })).toContain('Snap-fit (from an older version)');
   });
 
   it('reads control values from the config', () => {
     const c = tray();
     expect(controlValue(c, 'tray.sizeLocked')).toBe('fit');
-    expect(controlValue(c, 'tray.spacing')).toBe(27);
+    expect(controlValue(c, 'tray.spacing')).toBe(24);
     c.options.tray.connection = 'snap_fit';
     expect(controlValue(c, 'tray.height')).toBeGreaterThan(8.6);
     c.options.tray.footprint = { width: 120, depth: 90 };

@@ -1,32 +1,60 @@
 import { describe, expect, it } from 'vitest';
 import { defaultConfig } from '../src/config';
-import { DEFAULT_OPEN_GROUPS, SLIDE_DIRECTION_OPTIONS, TRAY_GROUPS, dockSettingsState, groupOfControl, traySettingsState } from '../src/ui/settings-model';
+import {
+  DEFAULT_OPEN_GROUPS, FRONT_TEXT_NOTE, RETENTION_NOTE, SIZE_SECTIONS, SLIDE_DIRECTION_OPTIONS, TRAY_GROUPS,
+  dockSettingsState, footprintChoice, groupOfControl, panelOfControl, traySettingsState,
+} from '../src/ui/settings-model';
 import type { HolderConfig } from '../src/types';
 
 const tray = (): HolderConfig => defaultConfig();
 const summary = (c: HolderConfig, id: string) => traySettingsState(c).groups.find(g => g.id === id)!.summary;
 
 describe('tray settings model', () => {
-  it('orders groups Layout, Stacking, Lid, Size, Pockets & text and opens Layout and Stacking first', () => {
-    expect(TRAY_GROUPS.map(g => g.title)).toEqual(['Layout', 'Stacking', 'Lid', 'Size', 'Pockets & text']);
-    expect(DEFAULT_OPEN_GROUPS.inventory_tray).toEqual(['layout', 'stacking']);
-    expect(groupOfControl('inventory_tray', 'tray.margin')).toBe('size');
+  it('splits controls across the Keys, Size and Tray settings tabs', () => {
+    expect(TRAY_GROUPS.map(g => g.title)).toEqual(['Stacking', 'Lid', 'Pockets & text']);
+    expect(SIZE_SECTIONS.inventory_tray.map(s => s.title)).toEqual(['Size', 'Spacing']);
+    expect(DEFAULT_OPEN_GROUPS.inventory_tray).toEqual(['stacking', 'lid']);
+    expect(panelOfControl('inventory_tray', 'tray.columns')).toBe('keys');
+    expect(panelOfControl('inventory_tray', 'labelSize')).toBe('keys');
+    expect(panelOfControl('inventory_tray', 'tray.width')).toBe('size');
+    expect(panelOfControl('inventory_tray', 'tray.margin')).toBe('size');
+    expect(panelOfControl('inventory_tray', 'tray.rowGap')).toBe('size');
+    expect(panelOfControl('inventory_tray', 'tray.sideTextPercent')).toBe('settings');
+    expect(panelOfControl('desktop_dock', 'dock.depthMargin')).toBe('size');
+    expect(panelOfControl('desktop_dock', 'dock.columns')).toBe('keys');
+    expect(groupOfControl('inventory_tray', 'tray.sideTextPercent')).toBe('pockets');
+    expect(groupOfControl('inventory_tray', 'tray.margin')).toBeUndefined();
     expect(groupOfControl('inventory_tray', 'label-x')).toBeUndefined();
     expect(SLIDE_DIRECTION_OPTIONS.map(o => o.label)).toEqual(['← Left', '→ Right', '↓ Front', '↑ Back']);
   });
   it('summarises defaults', () => {
     const s = traySettingsState(tray());
     expect(s.groups.map(g => [g.id, g.summary, g.modified])).toEqual([
-      ['layout', 'Auto · 6 columns · 27 mm', false],
       ['stacking', 'Standalone', false],
       ['lid', 'No lid', false],
-      ['size', expect.stringMatching(/^Fit to keys · [\d.]+ × [\d.]+ × 8.6 mm$/), false],
-      ['pockets', 'Standard scoop · Tabs', false],
+      ['pockets', 'Standard scoop · No tabs', false],
     ]);
-    const empty = { ...tray(), slots: [] };
-    expect(summary(empty, 'layout')).toBe('Auto · 27 mm');
-    expect(summary(empty, 'size')).toBe('Fit to keys · 8.6 mm high');
-    expect(traySettingsState(empty).size.readout).toBe('Add keys to see the size.');
+    expect(s.size.choice).toBe('fit');
+    expect(s.size.readout).toMatch(/^[\d.]+ × [\d.]+ mm, fits your keys$/);
+    expect(traySettingsState({ ...tray(), slots: [] }).size.readout).toBe('Add keys to see the size.');
+  });
+  it('marks retention tabs as untested', () => {
+    const c = tray();
+    expect(c.options.tray.retention).toBe(false);
+    expect(traySettingsState(c).controls['tray.retention'].hint).toBe(RETENTION_NOTE);
+    c.options.tray.retention = true;
+    expect(summary(c, 'pockets')).toBe('Standard scoop · Tabs');
+    expect(traySettingsState(c).groups.find(g => g.id === 'pockets')!.modified).toBe(true);
+  });
+  it('shows the front text size with the print note once there is text', () => {
+    const c = tray();
+    expect(traySettingsState(c).controls['tray.sideTextPercent'].visible).toBe(false);
+    c.options.tray.sideText = 'KEYS';
+    expect(traySettingsState(c).controls['tray.sideTextPercent']).toMatchObject({ visible: true, hint: FRONT_TEXT_NOTE });
+    c.options.tray.sideText = '';
+    expect(traySettingsState(c).groups.find(g => g.id === 'pockets')!.modified).toBe(false);
+    c.options.tray.sideTextPercent = 80;
+    expect(traySettingsState(c).groups.find(g => g.id === 'pockets')!.modified).toBe(true);
   });
   it('hides dependent controls instead of disabling them', () => {
     const c = tray();
@@ -55,22 +83,49 @@ describe('tray settings model', () => {
     expect(s.lidStyleNote).toBe('Snap-fit lids use a fixed design.');
     expect(summary(c, 'stacking')).toBe('Snap-fit (older version)');
   });
-  it('reports a too-small fixed footprint with a grow action and marks Size as an error', () => {
+  it('reports a too-small fixed footprint with a grow action', () => {
     const c = tray(); c.options.tray.footprint = { width: 40, depth: 40 };
     const s = traySettingsState(c);
     expect(s.size.tooSmall).toBe(true);
+    expect(s.size.choice).toBe('fixed');
     expect(s.size.readout).toMatch(/^Too small\. These keys need at least [\d.]+ × [\d.]+ mm\.$/);
     expect(s.size.grow!.label).toMatch(/^Use [\d.]+ × [\d.]+ mm$/);
-    expect(s.groups.find(g => g.id === 'size')).toMatchObject({ error: true, modified: true, summary: 'Too small for these keys' });
-    expect(traySettingsState(tray(), new Set(['tray.spacing'])).groups.find(g => g.id === 'layout')!.error).toBe(true);
+    expect(traySettingsState(tray(), new Set(['tray.lidText'])).groups.find(g => g.id === 'lid')!.error).toBe(true);
+  });
+});
+
+describe('Size › Footprint › Match project', () => {
+  const work = { id: 'p1', name: 'Work keys', width: 200, depth: 90 };
+  it('waits for a tray to be picked, then shows where the size came from', () => {
+    const c = tray();
+    expect(footprintChoice(c, 'choosing')).toBe('match');
+    let s = traySettingsState(c, new Set(), 'choosing');
+    expect(s.size.readout).toBe('Choose a tray to copy its width and depth.');
+    expect(s.controls['tray.width'].visible).toBe(false);
+    c.options.tray.footprint = { width: 200, depth: 90 };
+    s = traySettingsState(c, new Set(), work);
+    expect(s.size.choice).toBe('match');
+    expect(s.size.readout).toBe('200 × 90 mm, same as “Work keys”.');
+  });
+  it('becomes a fixed size once the width or depth no longer matches', () => {
+    const c = tray();
+    c.options.tray.footprint = { width: 210, depth: 90 };
+    expect(footprintChoice(c, work)).toBe('fixed');
+    expect(traySettingsState(c, new Set(), work).controls['tray.width'].visible).toBe(true);
+    c.options.tray.footprint = null;
+    expect(footprintChoice(c, work)).toBe('fit');
   });
 });
 
 describe('dock settings model', () => {
-  it('summarises dock groups', () => {
+  it('keeps only Text in Dock settings and reports the footprint in the Size tab', () => {
     const c = { ...tray(), template: 'desktop_dock' as const };
-    expect(dockSettingsState(c).groups.map(g => g.summary)).toEqual(['Auto · 26 mm', 'Base 13 mm · margins 18 / 22.5 mm', '“KEY DOCK”']);
+    const s = dockSettingsState(c);
+    expect(s.groups.map(g => g.summary)).toEqual(['“KEY DOCK”']);
+    expect(s.size.readout).toMatch(/^[\d.]+ × [\d.]+ mm\. Spacing and margins set the size\.$/);
+    expect(s.controls['dock.titlePercent']).toMatchObject({ visible: true, hint: FRONT_TEXT_NOTE });
     c.options.dock.title = '';
-    expect(dockSettingsState(c).groups[2]).toMatchObject({ summary: 'No text', modified: true });
+    expect(dockSettingsState(c).groups[0]).toMatchObject({ summary: 'No text', modified: true });
+    expect(dockSettingsState(c).controls['dock.titlePercent'].visible).toBe(false);
   });
 });

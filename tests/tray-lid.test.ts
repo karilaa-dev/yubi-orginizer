@@ -6,7 +6,7 @@ import { TRAY_LID, TRAY_STACK } from '../src/geometry/library';
 function example() {
   const config = defaultConfig();
   config.template = 'inventory_tray';
-  Object.assign(config.options.tray, { columns: 4, spacing: 24, rowGap: 2 });
+  Object.assign(config.options.tray, { columns: 4, spacing: 24, rowGap: 2, retention: true });
   return config;
 }
 

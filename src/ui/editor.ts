@@ -1,6 +1,6 @@
 /**
- * The editor view (#editor): one open project (ProjectSession), the Keys and Tray/Dock settings
- * tabs, the 3D preview with model generation, and the Add keys / Download / filament dialogs.
+ * The editor view (#editor): one open project (ProjectSession), the Keys, Size and Tray/Dock
+ * settings tabs, the 3D preview with model generation, and the Add keys / Download / filament dialogs.
  *
  * Every edit goes through changed(): validate, hand the config to the session (autosave), render
  * what the change requires, sync derived state in place, then regenerate the model.
@@ -11,7 +11,7 @@ import { estimateFilament } from '../filament';
 import { buildProject, inventoryTrayLayout, trayFootprintError } from '../geometry';
 import { icon } from '../icons';
 import { OrganizerPreview } from '../preview';
-import { ProjectSession, ProjectStoreError, type BrowserStorage, type DisplayPrefs, type ProjectRecord, type ProjectSessionEvents } from '../projects';
+import { ProjectSession, ProjectStoreError, listProjects, type BrowserStorage, type DisplayPrefs, type ProjectRecord, type ProjectSessionEvents } from '../projects';
 import type { PwaStatus } from '../pwa';
 import { renderScad } from '../runtime';
 import { keyLabelMillimeters, readLegacyLidSize } from '../text-size';
@@ -22,7 +22,7 @@ import { filamentDetailMarkup } from './app-help';
 import { esc } from './dom';
 import { captureFocus, clearFieldError, controlInputs, fieldErrorText, restoreFocus, showFieldError } from './editor-fields';
 import { catalogMarkup, catalogTotalText, dropIndex, isKeysControl, keysPanelMarkup, reinsertSlot, removeOneOfType, removedMessage } from './editor-keys';
-import { settingsPanelMarkup, snapFitRangeError, syncSettingsPanel, withConnection, withTemplate, type SyncMemory } from './editor-settings';
+import { settingsPanelMarkup, sizePanelMarkup, snapFitRangeError, syncSettingsPanel, withConnection, withTemplate, type SyncMemory } from './editor-settings';
 import {
   FAILED_TEXT, OFFLINE_SETUP_TEXT, STALE_STATES, createErrorAnnouncer, downloadButtonState, downloadDialogStatus, fileSizeText, formatNote,
   generationLabel, gramsText, isOfflineSetupFailure, isZipDownload, mobileStatusText, partSelectValue, preparingLabel, previewOverlay,
@@ -30,10 +30,12 @@ import {
 } from './editor-status';
 import { closeMenu, isMenuOpen, openMenu, type MenuItem } from './menu';
 import { deleteWithUndo, duplicateFromEditor, matchingLayerAvailability, openMatchingLayerDialog, requestPersistentStorage, type ProjectActionsDeps } from './project-actions';
-import { DEFAULT_OPEN_GROUPS, groupOfControl, traySettingsState } from './settings-model';
+import {
+  DEFAULT_OPEN_GROUPS, groupOfControl, panelOfControl, traySettingsState, type FootprintMatch, type MatchState, type Panel,
+} from './settings-model';
 import { toast } from './toast';
 
-export type Panel = 'keys' | 'settings';
+export type { Panel } from './settings-model';
 export type RenderScope = 'none' | 'keys' | 'settings' | 'all';
 /** Restored after an update reload (sessionStorage yubi-orginizer.ui.v1). */
 export interface UiState { panel: Panel; panelScroll: number; windowScroll: number }
@@ -98,11 +100,13 @@ export function editorMarkup(): string {
     <div class="workspace">
       <aside class="controls-panel" aria-label="Organizer design">
         <div class="panel-tabs" role="tablist" aria-label="Organizer design">
-          <button type="button" id="keys-tab" role="tab" aria-selected="true" aria-controls="keys-panel">Keys <span id="key-count" class="tab-count">0</span></button>
-          <button type="button" id="settings-tab" role="tab" aria-selected="false" aria-controls="settings-panel" tabindex="-1">Tray settings</button>
+          <button type="button" id="keys-tab" role="tab" aria-selected="true" aria-controls="keys-panel">${icon('key', 'tab-icon')}<span class="tab-label">Keys</span><span id="key-count" class="tab-count">0</span></button>
+          <button type="button" id="size-tab" role="tab" aria-selected="false" aria-controls="size-panel" tabindex="-1">${icon('ruler', 'tab-icon')}<span class="tab-label">Size</span></button>
+          <button type="button" id="settings-tab" role="tab" aria-selected="false" aria-controls="settings-panel" tabindex="-1">${icon('sliders', 'tab-icon')}<span class="tab-label">Tray settings</span></button>
         </div>
         <div class="panel-body">
           <div id="keys-panel" class="tab-panel" role="tabpanel" aria-labelledby="keys-tab"></div>
+          <div id="size-panel" class="tab-panel" role="tabpanel" aria-labelledby="size-tab" hidden></div>
           <div id="settings-panel" class="tab-panel" role="tabpanel" aria-labelledby="settings-tab" hidden></div>
         </div>
       </aside>
@@ -111,7 +115,7 @@ export function editorMarkup(): string {
           <div id="generation-status" class="status-chip" hidden></div>
           <div class="preview-actions">
             ${toggle('show-keys', 'eye', 'Keys', ' title="Show the keys in the preview. They aren\'t printed."')}
-            ${toggle('explode', 'layers', 'Explode', ' hidden title="Separate the parts in the preview"')}
+            ${toggle('explode', 'explode', 'Explode', ' hidden title="Separate the parts in the preview"')}
             ${toggle('preview-quality', 'sparkle', 'High quality', ' title="Turn off to save battery. The printed model doesn\'t change."')}
           </div>
         </div>
@@ -163,10 +167,16 @@ function announce(region: HTMLElement, text: string): void {
 
 export function createEditor(env: EditorEnv): Editor {
   const root = element('editor');
-  const keysPanel = element('keys-panel'), settingsPanel = element('settings-panel');
+  const keysPanel = element('keys-panel'), sizePanel = element('size-panel'), settingsPanel = element('settings-panel');
   const panelBody = root.querySelector<HTMLElement>('.panel-body')!;
   const controlsPanel = root.querySelector<HTMLElement>('.controls-panel')!;
-  const keysTab = element<HTMLButtonElement>('keys-tab'), settingsTab = element<HTMLButtonElement>('settings-tab');
+  const keysTab = element<HTMLButtonElement>('keys-tab'), sizeTab = element<HTMLButtonElement>('size-tab'), settingsTab = element<HTMLButtonElement>('settings-tab');
+  const PANELS: readonly { id: Panel; tab: HTMLButtonElement; body: HTMLElement }[] = [
+    { id: 'keys', tab: keysTab, body: keysPanel },
+    { id: 'size', tab: sizeTab, body: sizePanel },
+    { id: 'settings', tab: settingsTab, body: settingsPanel },
+  ];
+  const tabOf = (id: Panel): HTMLButtonElement => PANELS.find(p => p.id === id)!.tab;
   const keyCount = element('key-count');
   const titleEl = element('project-title'), saveStateEl = element('save-state');
   const renameError = element('rename-error'), remoteBanner = element('remote-banner');
@@ -206,7 +216,9 @@ export function createEditor(env: EditorEnv): Editor {
   let session: ProjectSession | undefined;
   let config: HolderConfig = { ...defaultConfig(), slots: [] };
   let panel: Panel = 'keys';
-  const panelScroll: Record<Panel, number> = { keys: 0, settings: 0 };
+  const panelScroll: Record<Panel, number> = { keys: 0, size: 0, settings: 0 };
+  /** Size › Footprint › Match project: not part of the config, so it lasts while the project is open. */
+  let match: MatchState;
   let exploded = true;
   let openToken = 0, displayedToken = -1;
   let revision = 0, readyRevision = -1;
@@ -322,7 +334,7 @@ export function createEditor(env: EditorEnv): Editor {
     for (const id of [...inputErrors.keys()]) if (isKeysControl(id)) inputErrors.delete(id);
     for (const id of [...pendingErrors.keys()]) if (isKeysControl(id)) pendingErrors.delete(id);
     if (!pendingErrors.size) clearTimeout(pendingTimer);
-    keysPanel.innerHTML = keysPanelMarkup(config, { draggable: fineQuery.matches });
+    keysPanel.innerHTML = keysPanelMarkup(config, { draggable: fineQuery.matches, dockNotice: !env.prefs().seen.dockNotice });
   }
 
   function renderSettings(): void {
@@ -333,7 +345,7 @@ export function createEditor(env: EditorEnv): Editor {
     if (sameType) {
       for (const [id, message] of pendingErrors) if (!isKeysControl(id)) inputErrors.set(id, message);
       for (const [id, message] of inputErrors) {
-        const inputs = controlInputs(settingsPanel, id);
+        const inputs = controlInputs(panelBody, id);
         if (isKeysControl(id) || !inputs.length || inputs.some(i => i.type === 'radio' || i.type === 'checkbox')) continue;
         typed.push({ id, message, values: inputs.map(i => i.value) });
       }
@@ -348,16 +360,17 @@ export function createEditor(env: EditorEnv): Editor {
       ? new Set([...settingsPanel.querySelectorAll<HTMLElement>('details.group[open]')].map(d => d.dataset.group!))
       : undefined;
     const scroll = panelBody.scrollTop;
-    settingsPanel.innerHTML = settingsPanelMarkup(config, { open: current ?? openGroupsFor(config.template), dockNotice: !env.prefs().seen.dockNotice });
+    settingsPanel.innerHTML = settingsPanelMarkup(config, { open: current ?? openGroupsFor(config.template) });
+    sizePanel.innerHTML = sizePanelMarkup(config, { match, candidates: matchCandidates() });
     settingsPanel.dataset.template = config.template;
     if (current) panelBody.scrollTop = scroll;
     const restored: HTMLInputElement[] = [];
     for (const { id, message, values } of typed) {
-      const inputs = controlInputs(settingsPanel, id);
+      const inputs = controlInputs(panelBody, id);
       if (inputs.length !== values.length) continue;
       inputs.forEach((input, i) => { input.value = values[i]; });
       inputErrors.set(id, message);
-      showFieldError(settingsPanel, id, message);
+      showFieldError(panelBody, id, message);
       restored.push(inputs.find(i => i.type === 'number') ?? inputs[0]);
     }
     // The new settings may accept (or reject differently) what was typed, e.g. a snap-fit
@@ -367,7 +380,8 @@ export function createEditor(env: EditorEnv): Editor {
 
   /** Replaces updateTrayLockReadouts() / updateTraySizeReadout(): everything derived from the config. */
   function syncSettingsState(): void {
-    syncSettingsPanel(settingsPanel, config, inputErrors, memory);
+    // The Size and settings tabs, and Columns in the Keys tab.
+    syncSettingsPanel(panelBody, config, inputErrors, memory, match);
     const instructions = session ? trayConnectionInstructions(config).join(' ') : '';
     const helpText = document.getElementById('tray-lock-help-text');
     if (helpText) { helpText.textContent = instructions; helpText.hidden = !instructions; }
@@ -377,14 +391,13 @@ export function createEditor(env: EditorEnv): Editor {
 
   function renderTabs(): void {
     keyCount.textContent = String(config.slots.length);
-    settingsTab.textContent = config.template === 'desktop_dock' ? 'Dock settings' : 'Tray settings';
-    for (const [tab, id] of [[keysTab, 'keys'], [settingsTab, 'settings']] as const) {
+    settingsTab.querySelector('.tab-label')!.textContent = config.template === 'desktop_dock' ? 'Dock settings' : 'Tray settings';
+    for (const { id, tab, body } of PANELS) {
       const active = panel === id;
       tab.setAttribute('aria-selected', String(active));
       tab.tabIndex = active ? 0 : -1;
+      body.hidden = !active;
     }
-    keysPanel.hidden = panel !== 'keys';
-    settingsPanel.hidden = panel !== 'settings';
   }
 
   /* ───────────── Tabs and scroll ───────────── */
@@ -413,14 +426,17 @@ export function createEditor(env: EditorEnv): Editor {
   const tabs = root.querySelector<HTMLElement>('.panel-tabs')!;
   tabs.addEventListener('click', event => {
     const tab = (event.target as Element).closest<HTMLElement>('[role="tab"]');
-    if (tab) switchPanel(tab === keysTab ? 'keys' : 'settings');
+    const target = PANELS.find(p => p.tab === tab);
+    if (target) switchPanel(target.id);
   });
   tabs.addEventListener('keydown', event => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
     event.preventDefault();
-    const next: Panel = event.key === 'Home' ? 'keys' : event.key === 'End' ? 'settings' : panel === 'keys' ? 'settings' : 'keys';
-    switchPanel(next);
-    (next === 'keys' ? keysTab : settingsTab).focus();
+    const index = PANELS.findIndex(p => p.id === panel), last = PANELS.length - 1;
+    const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? last
+      : event.key === 'ArrowRight' ? (index === last ? 0 : index + 1) : (index === 0 ? last : index - 1);
+    switchPanel(PANELS[nextIndex].id);
+    PANELS[nextIndex].tab.focus();
   });
 
   /* ───────────── Title, save state, rename, remote banner ───────────── */
@@ -541,9 +557,16 @@ export function createEditor(env: EditorEnv): Editor {
     if (field === 'labels') next.labels = input.checked;
     else if (field === 'labelSize') next.labelSize = input.value.trim() ? keyLabelMillimeters(Number(input.value)) : NaN;
     else if (field === 'tray.sizeLocked') {
-      const fixed = input.type === 'radio' ? input.value === 'fixed' : input.checked;
+      const choice = input.type === 'radio' ? input.value : input.checked ? 'fixed' : 'fit';
+      if (choice === 'match') {
+        // Nothing changes until a tray is picked; re-render for the current list of trays.
+        match = 'choosing';
+        update('settings');
+        return;
+      }
+      match = undefined;
       const t = inventoryTrayLayout(config);
-      next.options.tray.footprint = fixed ? { width: t.width || 80, depth: t.depth || 80 } : null;
+      next.options.tray.footprint = choice === 'fixed' ? (config.options.tray.footprint ?? { width: t.width || 80, depth: t.depth || 80 }) : null;
     } else if (field === 'tray.width' || field === 'tray.depth') {
       if (!next.options.tray.footprint) return;
       next.options.tray.footprint[field === 'tray.width' ? 'width' : 'depth'] = numberOf(input.value);
@@ -646,11 +669,11 @@ export function createEditor(env: EditorEnv): Editor {
   function focusAfterUndo(selector: string): void {
     const active = document.activeElement;
     if (active && active !== document.body && active.isConnected) return; // e.g. Ctrl+Z in the editor: update() kept focus
-    const target = settingsPanel.querySelector<HTMLElement>(selector);
+    const target = panelBody.querySelector<HTMLElement>(selector);
     const summary = target?.closest('details')?.querySelector<HTMLElement>(':scope > summary'); // its group is collapsed
     if (isShown(target)) target.focus();
     else if (isShown(summary)) summary.focus();
-    else (panel === 'settings' ? settingsTab : keysTab).focus();
+    else tabOf(panel).focus();
   }
 
   function setFootprint(kind: 'lock' | 'grow' | 'auto'): void {
@@ -663,14 +686,15 @@ export function createEditor(env: EditorEnv): Editor {
       if (!grow) return;
       next.options.tray.footprint = { width: grow.width, depth: grow.depth };
     } else next.options.tray.footprint = null;
+    match = undefined;
     // The button sets the size, replacing whatever was typed there; other typed fields keep their values.
     for (const id of ['tray.sizeLocked', 'tray.width', 'tray.depth']) { inputErrors.delete(id); pendingErrors.delete(id); }
     const fromOverlay = overlay.contains(document.activeElement);
     changed(next, { render: 'settings' });
     // The button that was used is gone now: move focus to what it affected.
     const target = kind === 'lock' ? settingsPanel.querySelector<HTMLElement>('[data-action="new-layer"]')
-      : kind === 'grow' ? settingsPanel.querySelector<HTMLElement>('#tray\\.width')
-      : settingsPanel.querySelector<HTMLElement>('[data-option="tray.sizeLocked"]:checked');
+      : kind === 'grow' ? sizePanel.querySelector<HTMLElement>('#tray\\.width')
+      : sizePanel.querySelector<HTMLElement>('[data-option="tray.sizeLocked"]:checked');
     if (isShown(target)) target.focus();
     else if (fromOverlay) card.querySelector<HTMLElement>('.preview-canvas')?.focus();
   }
@@ -683,12 +707,35 @@ export function createEditor(env: EditorEnv): Editor {
     openMatchingLayerDialog(session.id!, env.actions);
   }
 
+  /** Other saved trays on this device, with the width and depth Match project copies. */
+  function matchCandidates(): FootprintMatch[] {
+    const own = session?.id;
+    if (!session || config.template !== 'inventory_tray') return [];
+    let projects;
+    try { projects = listProjects(env.store.local).projects; } catch { return []; }
+    return projects.filter(p => p.id !== own && p.config.template === 'inventory_tray').flatMap(p => {
+      const layout = inventoryTrayLayout(p.config);
+      return layout.width > 0 && layout.depth > 0 ? [{ id: p.id, name: p.name, width: layout.width, depth: layout.depth }] : [];
+    });
+  }
+
+  function matchProject(id: string): void {
+    if (!session || config.template !== 'inventory_tray') return;
+    const source = matchCandidates().find(c => c.id === id);
+    if (!source) { match = 'choosing'; syncSettingsState(); return; }
+    match = source;
+    const next = structuredClone(config);
+    next.options.tray.footprint = { width: source.width, depth: source.depth };
+    for (const control of ['tray.sizeLocked', 'tray.width', 'tray.depth']) { inputErrors.delete(control); pendingErrors.delete(control); clearFieldError(root, control); }
+    changed(next);
+  }
+
   function dismissDockNotice(): void {
     const prefs = env.prefs();
     prefs.seen.dockNotice = true;
     env.savePrefs();
-    settingsPanel.querySelector('#dock-notice')?.remove();
-    settingsPanel.querySelector<HTMLElement>('[data-template-switch]:checked')?.focus();
+    keysPanel.querySelector('#dock-notice')?.remove();
+    keysPanel.querySelector<HTMLElement>('[data-template-switch]:checked')?.focus();
   }
 
   /** Download "Fix N settings" and the overlay's Show: go to the first problem. */
@@ -696,35 +743,39 @@ export function createEditor(env: EditorEnv): Editor {
     surfacePendingErrors();
     const key = inputErrors.keys().next().value ?? (tooSmall() ? 'tray.width' : undefined);
     if (!key) return;
-    if (isKeysControl(key)) {
+    if (key.startsWith('label-')) {
       switchPanel('keys');
-      const el = key.startsWith('label-') ? document.getElementById(key)
-        : keysPanel.querySelector<HTMLElement>(`input[type="number"][data-option="${key}"]`) ?? keysPanel.querySelector<HTMLElement>(`[data-option="${key}"]`);
-      el?.focus();
+      document.getElementById(key)?.focus();
       return;
     }
-    switchPanel('settings');
+    const target = panelOfControl(config.template, key);
+    switchPanel(target);
+    const body = PANELS.find(p => p.id === target)!.body;
     const group = groupOfControl(config.template, key);
-    const details = group ? settingsPanel.querySelector<HTMLDetailsElement>(`[data-group="${group}"]`) : null;
+    const details = group ? body.querySelector<HTMLDetailsElement>(`[data-group="${group}"]`) : null;
     if (details) details.open = true;
-    const el = settingsPanel.querySelector<HTMLElement>(`input[type="number"][data-option="${key}"]`)
-      ?? settingsPanel.querySelector<HTMLElement>(`[data-option="${key}"]:checked`)
-      ?? settingsPanel.querySelector<HTMLElement>(`input[type="range"][data-option="${key}"]`)
-      ?? settingsPanel.querySelector<HTMLElement>(`[data-option="${key}"]`);
+    const el = body.querySelector<HTMLElement>(`input[type="number"][data-option="${key}"]`)
+      ?? body.querySelector<HTMLElement>(`[data-option="${key}"]:checked`)
+      ?? body.querySelector<HTMLElement>(`input[type="range"][data-option="${key}"]`)
+      ?? body.querySelector<HTMLElement>(`[data-option="${key}"]`);
     el?.focus();
   }
 
-  settingsPanel.addEventListener('input', event => {
+  for (const settingsBody of [sizePanel, settingsPanel]) {
+    settingsBody.addEventListener('input', onSettingsInput);
+    settingsBody.addEventListener('change', onSettingsChange);
+  }
+  function onSettingsInput(event: Event): void {
     const input = event.target as HTMLInputElement;
     if (input.dataset.option && ['range', 'number', 'text'].includes(input.type)) updateOption(input, input.type === 'number');
-  });
-  settingsPanel.addEventListener('change', event => {
+  }
+  function onSettingsChange(event: Event): void {
     const input = event.target as HTMLInputElement;
-    if (input.hasAttribute('data-template-switch')) { if (input.checked) switchTemplate(input.value as TemplateId); return; }
+    if (input.id === 'match-project') { matchProject(input.value); return; }
     // A number field commits on blur/Enter: show a range error held back while typing.
     if (input.type === 'number') { if (pendingErrors.has(input.dataset.option ?? '')) surfacePendingErrors(); return; }
     if (input.dataset.option && !['range', 'text'].includes(input.type)) updateOption(input);
-  });
+  }
   // Open groups are remembered per organizer type, only when the user toggles them.
   settingsPanel.addEventListener('click', event => {
     const summary = (event.target as Element).closest('summary');
@@ -794,7 +845,8 @@ export function createEditor(env: EditorEnv): Editor {
   });
   keysPanel.addEventListener('change', event => {
     const input = event.target as HTMLInputElement;
-    if (input.dataset.option && input.type === 'checkbox') updateOption(input);
+    if (input.hasAttribute('data-template-switch')) { if (input.checked) switchTemplate(input.value as TemplateId); }
+    else if (input.dataset.option && (input.type === 'checkbox' || input.type === 'radio')) updateOption(input);
     else if (input.type === 'number' && pendingErrors.has(input.dataset.option ?? '')) surfacePendingErrors();
   });
   keysPanel.addEventListener('keydown', event => {
@@ -1343,7 +1395,7 @@ export function createEditor(env: EditorEnv): Editor {
     showKeysButton.setAttribute('aria-pressed', String(prefs.showKeys));
     preview?.setQuality(prefs.quality);
     qualityButton.setAttribute('aria-pressed', String(prefs.quality === 'high'));
-    if (prefs.seen.dockNotice) settingsPanel.querySelector('#dock-notice')?.remove();
+    if (prefs.seen.dockNotice) keysPanel.querySelector('#dock-notice')?.remove();
     openGroups.clear();
     renderOrbitHint();
   }
@@ -1365,7 +1417,8 @@ export function createEditor(env: EditorEnv): Editor {
     session = new ProjectSession(env.store.local, start, events, { session: env.store.session });
     config = session.config;
     panel = options.ui?.panel ?? 'keys';
-    panelScroll.keys = panelScroll.settings = 0;
+    panelScroll.keys = panelScroll.size = panelScroll.settings = 0;
+    match = undefined;
     inputErrors.clear();
     clearPendingErrors();
     errorAnnouncer.reset();

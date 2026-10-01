@@ -28,7 +28,7 @@ describe('project thumbnails', () => {
     const svg = projectThumbnail(c);
     expect(count(svg, 'class="thumb-slot')).toBe(c.slots.length);
     expect(count(svg, 'thumb-footprint')).toBe(1);
-    expect(svg).toContain('viewBox="-84 -35.4 168 70.8"'); // 164 × 66.8 mm
+    expect(svg).toContain('viewBox="-76.5 -35.4 153 70.8"'); // 149 × 66.8 mm
     expect(svg).not.toContain('is-hidden');
   });
   it('dashes slots that are hidden in the preview', () => {
@@ -58,7 +58,7 @@ describe('project thumbnails', () => {
 
 describe('project card info', () => {
   it('describes a fit-to-keys tray with its size and no chips', () => {
-    expect(projectCardInfo(record(defaultConfig()))).toEqual({ meta: 'Inventory tray · 6 keys · 164 × 66.8 mm', chips: [] });
+    expect(projectCardInfo(record(defaultConfig()))).toEqual({ meta: 'Inventory tray · 6 keys · 149 × 66.8 mm', chips: [] });
   });
   it('lists connection, lid and fixed-size chips', () => {
     const c = defaultConfig();

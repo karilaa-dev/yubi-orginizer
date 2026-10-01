@@ -1,5 +1,8 @@
 const paths: Record<string, string> = {
   rotate: '<path d="M20 9a8 8 0 1 0-1 9M20 3v6h-6"/>',
+  key: '<circle cx="8" cy="15" r="4.5"/><path d="m11.2 11.8 8.8-8.8m-3.5 3.5 2.5 2.5m-5.5.5 2 2"/>',
+  ruler: '<path d="M3 16.5 16.5 3 21 7.5 7.5 21z"/><path d="m7.5 12 2 2M10.5 9l2 2m1-5 2 2"/>',
+  sliders: '<path d="M4 7h9m4 0h3M4 17h3m4 0h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>',
   filament: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M20 12v8h-5M8 5l1.5 4M5 10l4 .7m-2 6 3-2m7 3-3-3m5-8-4 3"/>',
   search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1 1m12 12 1 1M5 19l1-1M18 6l1-1"/>',
@@ -31,6 +34,8 @@ const paths: Record<string, string> = {
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/>',
   expand: '<path d="M8 3H3v5m13-5h5v5M3 16v5h5m8 0h5v-5"/>',
   layers: '<path d="m12 3 10 5-10 5L2 8zm-10 9 10 5 10-5M2 16l10 5 10-5"/>',
+  // The same layers as separate paths, so the Explode button can spread them apart.
+  explode: '<path class="layer-top" d="m12 3 10 5-10 5L2 8z"/><path d="m2 12 10 5 10-5"/><path class="layer-bottom" d="m2 16 10 5 10-5"/>',
   more: '<circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none"/>',
   edit: '<path d="M4 20h4L19 9a2.83 2.83 0 0 0-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>',
   copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',

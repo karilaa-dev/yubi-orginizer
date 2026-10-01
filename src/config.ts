@@ -17,6 +17,9 @@ export const TEMPLATES: { id: TemplateId; name: string; description: string; ico
 // open as inventory trays instead of making the whole project list unreadable.
 const RETIRED_TEMPLATES = ['modular_rail', 'grid_organizer', 'travel_case', 'key_fit_tester', 'interface_tests'];
 export const MAX_SLOTS = 48;
+/** Front text (tray front edge, dock front) size: percent of the largest text that fits the wall.
+ * Projects saved without it keep the original size (3.1 mm, smaller only when it doesn't fit). */
+export const FRONT_TEXT_PERCENT = { min: 20, max: 100, tray: 50, dock: 30 } as const;
 export const STORAGE_KEY = 'yubikey-organizer.project.v1';
 export const DISPLAY_KEY = 'yubikey-organizer.display.v1';
 export function createSlot(type: KeyType): Slot {
@@ -26,8 +29,9 @@ export function defaultConfig(): HolderConfig {
   return {
     version: 1, template: 'inventory_tray', slots: KEY_TYPES.map(createSlot), labels: true, labelSize: 2.7,
     options: {
-      dock: { columns: 0, spacing: 26, rowSpacing: 45, edgeMargin: 18, depthMargin: 22.5, height: 13, title: 'KEY DOCK' },
-      tray: { columns: 0, spacing: 27, rowGap: 4, margin: 5, height: 8.6, scoop: 'default', retention: true, connection: 'none', slideDirection: 'left', sideText: '', lid: false, lidStyle: 'regular', lidText: '', lidTextSize: 6, lidTextPercent: 100, lidTextRotation: 0, footprint: null },
+      // New designs start at the minimum spacing; projects keep what they saved.
+      dock: { columns: 0, spacing: 22, rowSpacing: 18, edgeMargin: 12, depthMargin: 18, height: 13, title: 'KEY DOCK', titlePercent: FRONT_TEXT_PERCENT.dock },
+      tray: { columns: 0, spacing: 24, rowGap: 2, margin: 5, height: 8.6, scoop: 'default', retention: false, connection: 'none', slideDirection: 'left', sideText: '', sideTextPercent: FRONT_TEXT_PERCENT.tray, lid: false, lidStyle: 'regular', lidText: '', lidTextSize: 6, lidTextPercent: 100, lidTextRotation: 0, footprint: null },
     },
   };
 }
@@ -93,16 +97,19 @@ export function validateConfig(value: unknown): HolderConfig {
         edgeMargin: number(d.edgeMargin === undefined ? 18 : d.edgeMargin, 'Dock side margin', 12, 40),
         depthMargin: number(d.depthMargin === undefined ? 22.5 : d.depthMargin, 'Dock depth margin', 18, 45),
         height: number(d.height, 'Dock height', 11, 25), title: validateText(d.title, 'Dock title', 32),
+        ...(d.titlePercent !== undefined ? { titlePercent: number(d.titlePercent, 'Dock title percentage', FRONT_TEXT_PERCENT.min, FRONT_TEXT_PERCENT.max) } : {}),
       },
       tray: {
         columns: number(t.columns, 'Tray columns', 0, 6, true), spacing: number(t.spacing, 'Tray spacing', 24, 42),
         rowGap: number(t.rowGap === undefined ? 4 : t.rowGap, 'Space between tray rows', 2, 40),
         margin: number(t.margin, 'Tray margin', 5, 20), height: number(t.height === undefined ? 8.6 : t.height, 'Tray height', 8.6, 20),
         scoop: choice(t.scoop, ['small', 'default', 'large'], 'Finger scoop'),
+        // Projects saved before the option existed were printed with retention tabs.
         retention: bool(t.retention === undefined ? true : t.retention, 'Key retention'),
         connection,
         slideDirection: choice(t.slideDirection === undefined ? 'left' : t.slideDirection, ['left', 'right', 'front', 'back'], 'Slide-lock direction'),
         sideText: validateText(t.sideText === undefined ? '' : t.sideText, 'Side text', 32),
+        ...(t.sideTextPercent !== undefined ? { sideTextPercent: number(t.sideTextPercent, 'Side text percentage', FRONT_TEXT_PERCENT.min, FRONT_TEXT_PERCENT.max) } : {}),
         lid: bool(t.lid === undefined ? false : t.lid, 'Tray lid'),
         lidStyle: choice(t.lidStyle === undefined ? 'regular' : t.lidStyle, ['regular', 'minimal'], 'Tray lid style'),
         lidText: validateText(t.lidText === undefined ? '' : t.lidText, 'Tray lid text', 32),

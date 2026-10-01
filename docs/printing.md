@@ -17,8 +17,8 @@ Desktop OpenSCAD needs Liberation Sans and Text Metrics for matching lettering.
 rims for trays that lift apart. **Slide-lock** adds the H20/V7 pins and guides,
 with matching underside receivers. A lid can be added independently. For stacked
 trays with different contents, use **New matching layer** in the project menu, or
-choose **Tray settings › Size › Fixed size** on the larger layout before removing
-keys. Use identical outside dimensions and the same connection on every layer.
+choose **Size › Fixed size** on the larger layout before removing keys, or
+**Size › Match project** on the smaller one. Use identical outside dimensions and the same connection on every layer.
 An undersized fixed size blocks exports until corrected; key pockets are never
 scaled.
 
@@ -57,8 +57,10 @@ Press vertically to close and lift one end
 progressively at its finger notch to open. Keep clearance channels unobstructed.
 Regenerate both mating parts when replacing any older connection.
 
-**Retention tabs** are separate: they flex to hold keys in their pockets. PETG
-is a useful starting material for those repeated-use tabs. Changing material can
+**Retention tabs** are separate: they flex to hold keys in their pockets. They
+are off by default because they have not been tested in print yet; print a
+one-key tray first. PETG is a useful starting material for those repeated-use
+tabs. Changing material can
 change the enclosure fit; test the complete assembly you intend to print.
 
 ## Calibration and limitations

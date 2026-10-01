@@ -76,7 +76,7 @@ export function helpDialogMarkup(build: BuildInfo): string {
           <li>There's no Save button: projects save automatically.</li>
           <li>All projects: select yubi-orginizer at the top left.</li>
           <li>Label settings are in the Keys tab.</li>
-          <li>Lock tray dimensions is now Tray settings › Size › Fixed size.</li>
+          <li>Footprint, height and spacing are in the Size tab. Organizer type and Columns are in the Keys tab.</li>
         </ul>
       </section>
       <section aria-labelledby="help-about">

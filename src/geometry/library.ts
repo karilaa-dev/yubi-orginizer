@@ -27,6 +27,10 @@ export const TRAY_FLEX = { length: 12, rootThickness: 1, tipThickness: 0.8, root
 export const TRAY_STACK_PILLAR = { diameter: 3, clearance: 0.6, minSeparation: 90, spanPerSupport: 180, maxCount: 6 } as const;
 export const TRAY_LID = { thickness: 2.4, engravingDepth: 0.35, notchDepth: 0.8, notchHeight: 1.2, notchRadius: 4, textInset: 6, textVerticalBudget: 1.7 } as const;
 export const KEY_LABEL_LAYOUT = { baseSize: 2.7, baseHalfHeight: 2.2, baseEdgeOffset: 3 } as const;
+/** Front-wall text: width budget per character, free width at the sides and free height above and below. */
+/** Front-wall text: width budget per character, free width at the sides, free height above and below,
+ * and the size of projects saved before the size setting (3.1 mm unless it doesn't fit). */
+export const FRONT_TEXT_FIT = { legacySize: 3.1, sideInset: 10, charWidth: 1.15, verticalClearance: 2.4 } as const;
 
 /** Includes both mirrored arms, their through relief, and their rounded roots.
  * Coordinates share the centred pocket datum used by body_cut(). */
@@ -110,16 +114,19 @@ module label(s,x,y,z,maxw,size=2.7) {
   if(len(s)>0) translate([x,y,z-eps]) linear_extrude(0.35+eps)
     text(s,size=min(size,maxw/max(1,label_width_budget(s))),font="Liberation Sans:style=Bold",halign="center",valign="center");
 }
-module front_title_cut(s,w,d,h) {
+// Engraved into the vertical front wall: percent of the largest size that fits its width and
+// height (frontTextMaxSize() in TypeScript uses the same budget); undef keeps the original size.
+module front_title_cut(s,w,d,h,percent=undef) {
+  fit=min((w-${FRONT_TEXT_FIT.sideInset})/(max(1,len(s))*${FRONT_TEXT_FIT.charWidth}),h-${FRONT_TEXT_FIT.verticalClearance});
   if(len(s)>0) translate([0,-d/2+0.35,h/2]) rotate([90,0,0]) linear_extrude(0.5)
-    text(s,size=min(3.1,(w-10)/(max(1,len(s))*1.15)),font="Liberation Sans:style=Bold",halign="center",valign="center");
+    text(s,size=is_undef(percent)?min(${FRONT_TEXT_FIT.legacySize},fit):fit*percent/100,font="Liberation Sans:style=Bold",halign="center",valign="center");
 }
-module dock(ks,ls,xy,w,d,h,title="",label_scale=1) {
+module dock(ks,ls,xy,w,d,h,title="",label_scale=1,title_percent=undef) {
   union() {
     difference() {
       slab(w,d,h,5);
       for(i=[0:len(ks)-1]) translate([xy[i][0],xy[i][1],0]) socket_cut(ks[i],h);
-      front_title_cut(title,w,d,h);
+      front_title_cut(title,w,d,h,title_percent);
     }
     for(i=[0:len(ks)-1]) label(ls[i],xy[i][0],xy[i][1]-upright_label_distance(ks[i],label_scale),h,20,2.55*label_scale);
   }
@@ -207,7 +214,7 @@ module tray_stack_pillars(points,h,gap=${TRAY_STACK.gap}) {
   for(p=points) translate([p[0],p[1],h-eps])
     cylinder(d=${TRAY_STACK_PILLAR.diameter},h=gap+eps,$fn=48);
 }
-module inventory_tray(ks,ls,xy,w,d,h=8.6,scoop_r=6,label_width=23,retention=true,stackable=false,side_text="",support_xy=[],label_scale=1,has_lid=false) {
+module inventory_tray(ks,ls,xy,w,d,h=8.6,scoop_r=6,label_width=23,retention=true,stackable=false,side_text="",support_xy=[],label_scale=1,has_lid=false,side_text_percent=undef) {
   gap=tray_stack_gap(retention);
   union() {
     difference() {
@@ -215,7 +222,7 @@ module inventory_tray(ks,ls,xy,w,d,h=8.6,scoop_r=6,label_width=23,retention=true
       for(i=[0:len(ks)-1]) if(ks[i]=="CI") translate([xy[i][0],xy[i][1],0]) ci_inventory_reversible_cut(h);
       if(retention) for(i=[0:len(ks)-1]) translate([xy[i][0],xy[i][1],0]) tray_retention_relief(ks[i],h);
       if(stackable) tray_stack_sockets(w,d);
-      front_title_cut(side_text,w,d,h);
+      front_title_cut(side_text,w,d,h,side_text_percent);
     }
     if(retention) for(i=[0:len(ks)-1]) translate([xy[i][0],xy[i][1],0]) tray_retention_lips(ks[i],h);
     if(stackable||has_lid) {
@@ -226,11 +233,11 @@ module inventory_tray(ks,ls,xy,w,d,h=8.6,scoop_r=6,label_width=23,retention=true
 }
 // This actuator belongs to the lower tray. Its well opens upward, while
 // the next tray or lid has only narrow, sloped passive receivers underneath.
-module inventory_tray_snap(ks,ls,xy,w,d,h=${TRAY_SNAP.minimumHeight},scoop_r=6,label_width=23,retention=true,stackable=true,side_text="",support_xy=[],label_scale=1,has_lid=false) {
+module inventory_tray_snap(ks,ls,xy,w,d,h=${TRAY_SNAP.minimumHeight},scoop_r=6,label_width=23,retention=true,stackable=true,side_text="",support_xy=[],label_scale=1,has_lid=false,side_text_percent=undef) {
   gap=tray_stack_gap(retention);
   union() {
     difference() {
-      inventory_tray(ks,ls,xy,w,d,h,scoop_r,label_width,retention,false,side_text,[],label_scale,false);
+      inventory_tray(ks,ls,xy,w,d,h,scoop_r,label_width,retention,false,side_text,[],label_scale,false,side_text_percent);
       tray_snap_sockets(w,d);
       tray_snap_body_relief(w,d,h,gap);
       tray_snap_pry_notches(w,d);
@@ -282,6 +289,8 @@ module inventory_tray_lid_percent(w,d,s="",percent=100,angle=0) {
 }
 `;
 
-export function scadCall(module: string, args: unknown[]): string {
-  return `${library}\n${module}(${args.map((arg) => JSON.stringify(arg)).join(',')});\n`;
+/** `named` arguments follow the positional ones (`module(a,b,size=4)`). */
+export function scadCall(module: string, args: unknown[], named: Record<string, unknown> = {}): string {
+  const list = [...args.map((arg) => JSON.stringify(arg)), ...Object.entries(named).map(([name, value]) => `${name}=${JSON.stringify(value)}`)];
+  return `${library}\n${module}(${list.join(',')});\n`;
 }

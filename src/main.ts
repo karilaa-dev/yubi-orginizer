@@ -163,7 +163,7 @@ function takeUiState(id: string): UiState | undefined {
   try {
     const data = JSON.parse(store.session?.getItem(UI_KEY) ?? 'null') as Partial<UiState & { at: number; id: string }> | null;
     if (!data || data.id !== id || typeof data.at !== 'number' || Date.now() - data.at > UI_MAX_AGE_MS) return undefined;
-    const panel: Panel = data.panel === 'settings' ? 'settings' : 'keys';
+    const panel: Panel = data.panel === 'settings' || data.panel === 'size' ? data.panel : 'keys';
     const number = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0);
     return { panel, panelScroll: number(data.panelScroll), windowScroll: number(data.windowScroll) };
   } catch { return undefined; }

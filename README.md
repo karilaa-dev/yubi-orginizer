@@ -9,7 +9,8 @@ exports stay on your device; no account or backend is required.
 - Inventory trays and desktop docks. Desktop dock socket fit is still being
   refined; print a small one-key dock before a full organizer.
 - Six key shapes: YubiKey 5 NFC, 5C NFC, 5 Nano, 5C Nano, 5C, and 5Ci.
-- Adjustable layouts, finger scoops, retention tabs, printed labels and lids.
+- Adjustable layouts, finger scoops, printed labels, front text and lids.
+  Retention tabs are available but not yet tested in print, so they start off.
 - Three tray connections: Standalone, Stackable (lift-off locating rims) and
   H20/V7 Slide-lock.
 - STL, editable SCAD, 3MF and project file (`.yubi-orginizer.json`) exports.
@@ -40,18 +41,23 @@ service worker; the development server does not install the offline app.
    Choose **Inventory tray** or **Desktop dock** to start a new project, or open
    an existing project card.
 2. In the **Keys** tab, choose **Add keys** and set how many of each model you
-   need. Repeated keys and custom labels are supported, and **Print labels** and
-   **Label size** are at the top of the tab. Hiding a key in the preview keeps
-   its pocket; removing a key removes the pocket.
-3. In **Tray settings** (or **Dock settings**), adjust the groups: **Layout**,
-   **Stacking**, **Lid**, **Size** and **Pockets & text**. A collapsed group
-   shows a summary of its current settings.
-4. Changes save automatically; the editor bar shows **Saved**. Select the project
+   need. Repeated keys and custom labels are supported; **Organizer type**,
+   **Columns**, **Print labels** and the label **Size** are at the top of the tab. Hiding a
+   key in the preview keeps its pocket; removing a key removes the pocket.
+3. In the **Size** tab, choose the **Footprint** (**Fit to keys**,
+   **Fixed size**, or **Match project** to copy the width and depth of another
+   saved tray) and the height. **Spacing** below sets the column and row spacing
+   and the edge margin.
+4. In **Tray settings** (or **Dock settings**), adjust the groups: **Stacking**,
+   **Lid** and **Pockets & text** (or **Text** for docks). A collapsed group
+   shows a summary of its current settings. Front text is engraved into the
+   front wall; it can be resized, but small text won't print crisply.
+5. Changes save automatically; the editor bar shows **Saved**. Select the project
    name to rename it. The **⋯** project menu offers Rename, Duplicate,
    **New matching layer**, **Save project file (.json)** and Delete. Deleting can
    be undone, and deleted projects stay under **Recently deleted** on the
    Projects page for 30 days.
-5. Inspect the preview and use **Explode** to view separate parts. Choose
+6. Inspect the preview and use **Explode** to view separate parts. Choose
    **Download**, select the parts and export format, then inspect the file in
    your slicer before printing. Downloaded files are named after the project.
 
@@ -61,8 +67,8 @@ H20/V7 connection. Every layer of a stack needs the same size, connection and
 slide direction. **New matching layer** creates an empty tray that stacks on the
 current one: it switches the current tray to **Size › Fixed size** so the
 outside dimensions match, copies the connection and layout, and can move the lid
-to the new top layer. You can also set **Tray settings › Size › Fixed size** by
-hand. Saved enclosure snap-fit projects retain their geometry and appear as
+to the new top layer. You can also set **Size › Fixed size** by hand, or use
+**Size › Match project** to give an existing tray the footprint of another. Saved enclosure snap-fit projects retain their geometry and appear as
 **Snap-fit (from an older version)**. Regenerate both mating parts when changing
 the connection type.
 
@@ -116,11 +122,12 @@ and scope follow it.
 
 ## Licensing and attribution
 
-See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for dependency and geometry
-provenance. No top-level license has been selected for the application, and the
-supplied CAD profiles have no separate license declaration in this workspace.
-Third-party components retain their existing licenses, including the GPL-2.0-only
-OpenSCAD WASM runtime. Do not assume the whole repository is MIT-licensed.
+yubi-orginizer is released under the [MIT License](LICENSE). See
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for dependency and geometry
+provenance: third-party components keep their own licenses, including the
+GPL-2.0-only OpenSCAD WASM runtime and the SIL OFL 1.1 Liberation fonts, and the
+supplied CAD profiles in `src/geometry/profiles/` have no separate license
+declaration.
 
 YubiKey and Yubico names identify supported form factors. This project is not
 affiliated with or endorsed by Yubico.

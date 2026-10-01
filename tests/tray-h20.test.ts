@@ -8,7 +8,7 @@ import { trayConnectionInstructions } from '../src/export';
 
 function tray() {
   const c = defaultConfig(); c.template = 'inventory_tray';
-  Object.assign(c.options.tray, { connection: 'h20_slide_v7', lid: true, columns: 3 });
+  Object.assign(c.options.tray, { connection: 'h20_slide_v7', lid: true, columns: 3, retention: true });
   return c;
 }
 

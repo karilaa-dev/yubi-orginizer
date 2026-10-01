@@ -6,8 +6,8 @@ export type TrayConnection = 'none' | 'stackable' | 'h20_slide_v7' | 'snap_fit';
 export type TraySlideDirection = 'left' | 'right' | 'front' | 'back';
 export type TrayLidStyle = 'regular' | 'minimal';
 export interface HolderOptions {
-  dock: { columns: number; spacing: number; rowSpacing: number; edgeMargin: number; depthMargin: number; height: number; title: string };
-  tray: { columns: number; spacing: number; rowGap: number; margin: number; height: number; scoop: 'small' | 'default' | 'large'; retention: boolean; connection: TrayConnection; slideDirection: TraySlideDirection; sideText: string; lid: boolean; lidStyle: TrayLidStyle; lidText: string; lidTextSize: number; lidTextPercent?: number; lidTextRotation?: 0 | 90 | 180 | 270; footprint: { width: number; depth: number } | null };
+  dock: { columns: number; spacing: number; rowSpacing: number; edgeMargin: number; depthMargin: number; height: number; title: string; titlePercent?: number };
+  tray: { columns: number; spacing: number; rowGap: number; margin: number; height: number; scoop: 'small' | 'default' | 'large'; retention: boolean; connection: TrayConnection; slideDirection: TraySlideDirection; sideText: string; sideTextPercent?: number; lid: boolean; lidStyle: TrayLidStyle; lidText: string; lidTextSize: number; lidTextPercent?: number; lidTextRotation?: 0 | 90 | 180 | 270; footprint: { width: number; depth: number } | null };
 }
 export interface HolderConfig {
   version: 1;
@@ -25,6 +25,8 @@ export interface PartSpec {
   rotation: Vec3;
   explode: Vec3;
   color: string;
+  /** Preview only: a slide-lock part first slides by this much (to its entry position) before it can lift off. */
+  release?: Vec3;
 }
 export interface KeyPlacement { slotId: string; type: KeyType; position: Vec3; rotation: Vec3; partId?: string }
 export interface ProjectGeometry { parts: PartSpec[]; keys: KeyPlacement[]; dimensions: Vec3 }

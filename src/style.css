@@ -263,7 +263,7 @@ body[data-view=editor] .page { padding: 20px 24px; }
 .panel-tabs {
   display: grid;
   flex: none;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   height: 48px;
   padding: 0 8px;
   border-bottom: 1px solid var(--line);
@@ -280,6 +280,7 @@ body[data-view=editor] .page { padding: 20px 24px; }
   transition: color var(--ease);
 }
 .panel-tabs [role=tab]:hover { color: var(--text); }
+.panel-tabs .tab-icon { flex: none; width: 16px; height: 16px; }
 .panel-tabs [role=tab][aria-selected=true] { color: var(--text); }
 .panel-tabs [role=tab][aria-selected=true]::after {
   content: '';
@@ -453,7 +454,6 @@ body[data-view=editor] .page { padding: 20px 24px; }
 .segmented input:disabled + span { opacity: .5; }
 .segmented .icon { width: 16px; height: 16px; }
 .segmented .badge { height: 18px; padding: 0 6px; font-size: 10px; }
-.segmented-large > label > span { height: 36px; font-size: 13px; }
 
 /* Option cards (Connection, file formats) */
 .option-cards { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
@@ -666,15 +666,29 @@ body[data-view=editor] .page { padding: 20px 24px; }
 /* ───────────────────────── Views ───────────────────────── */
 
 /* Settings tab */
-.settings-top { display: grid; gap: 12px; padding: 16px; border-bottom: 1px solid var(--line); }
+/* One section rhythm in every tab: 16 px padding and 16 px between controls. */
+.panel-section, .size-section { display: grid; gap: 16px; padding: 16px; border-bottom: 1px solid var(--line); }
 .dock-notice { align-items: center; }
 .stacking-callout > .icon { color: var(--accent-text); }
 .size-readout { color: var(--text-2); font: 400 12px/18px var(--font); }
 .size-readout.error { color: var(--error); font-weight: 500; }
 .grow-button { justify-self: start; }
 
+/* Size tab: two plain sections (outside size, spacing) */
+.size-section:last-child { border-bottom: 0; }
+.section-title { color: var(--text); font: 600 14px/22px var(--font); }
+.footprint-field .segmented > label > span { padding: 0 4px; }
+
+/* Rows that belong to the control above (text size and rotation, label size): same controls, one line each */
+.text-setting { display: grid; gap: 8px; }
+.text-options { display: grid; gap: 8px; }
+.text-options:not(:has(> :not([hidden]))) { display: none; }
+.inline-field { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; align-items: center; gap: 4px 12px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.inline-field > label, .inline-label { color: var(--text); font: 500 13px/20px var(--font); }
+.inline-field > .field-hint, .inline-field > .field-error { grid-column: 2 / -1; }
+.inline-segmented > .segmented { grid-column: 2 / -1; }
+
 /* Keys tab */
-.label-strip { display: grid; gap: 6px; padding: 8px 16px 12px; border-bottom: 1px solid var(--line); }
 .key-list { margin: 0; padding: 4px 8px; list-style: none; }
 .key-row {
   position: relative;
@@ -764,6 +778,10 @@ input.key-label { width: 100%; height: 34px; padding: 0 8px; font-weight: 600; }
 .preview-toggle > .icon { width: 16px; height: 16px; }
 .preview-toggle:hover { background: var(--surface-2); color: var(--text); }
 .preview-toggle[aria-pressed=true] { background: var(--accent-soft); color: var(--accent-text); }
+/* Explode: the icon's layers spread apart while the parts are separated. */
+#explode .icon path { transition: transform .32s cubic-bezier(.34, 1.56, .64, 1); }
+#explode[aria-pressed=true] .icon .layer-top { transform: translateY(-1.75px); }
+#explode[aria-pressed=true] .icon .layer-bottom { transform: translateY(1.75px); }
 /* Above the toolbars (z-index 2): only the card takes pointer events, so uncovered toolbar parts still work. */
 .preview-overlay { position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; padding: 64px 16px; pointer-events: none; }
 .overlay-card {
@@ -1040,6 +1058,7 @@ input.key-label { width: 100%; height: 34px; padding: 0 8px; font-weight: 600; }
 
 @media (max-width: 360px) {
   .direction-field .segmented { grid-template-columns: 1fr 1fr; grid-auto-flow: row; }
+  .panel-tabs .tab-icon { display: none; }
   .wordmark { font-size: 16px; }
   .preview-toggle .toggle-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   /* Icon-only pills leave room for the wordmark; both pills keep their aria-label and title. */

@@ -9,7 +9,8 @@ function example(): HolderConfig {
   return config;
 }
 function args(source: string): unknown[] {
-  return JSON.parse(`[${/^\w+\((.*)\);$/.exec(source.trim().split('\n').at(-1)!)![1]}]`);
+  // Positional arguments only: trailing named ones (title_percent=30) are not JSON.
+  return JSON.parse(`[${/^\w+\((.*)\);$/.exec(source.trim().split('\n').at(-1)!)![1].replace(/(,\w+=[\d.]+)+$/, '')}]`);
 }
 
 describe('adjustable printed key labels', () => {

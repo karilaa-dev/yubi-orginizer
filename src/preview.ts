@@ -3,7 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { STLLoader } from 'three/addons/loaders/STLLoader.js';
 import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { KeyPlacement, KeyType, PartSpec, ProjectGeometry, Vec3 } from './types';
-import { ISOMETRIC_DIRECTION } from './preview-layout';
+import { ISOMETRIC_DIRECTION, explodeDuration, explodePathPoint } from './preview-layout';
 
 type ReferenceComponent = 'body' | 'connector' | 'touch';
 type PreviewView = 'iso' | 'top' | 'front';
@@ -13,7 +13,10 @@ type PositionedObject = {
   object: THREE.Object3D;
   position: Vec3;
   explode: Vec3;
+  /** Slide before lifting (slide-lock), or ZERO. */
+  release: Vec3;
 };
+type CameraPose = { position: THREE.Vector3; target: THREE.Vector3; radius: number; distance: number };
 
 const REFERENCE_COMPONENTS: ReferenceComponent[] = ['body', 'connector', 'touch'];
 const ZERO: Vec3 = [0, 0, 0];
@@ -61,7 +64,16 @@ export class OrganizerPreview {
   private revision = 0;
   private fitted = false;
   private bounds = new THREE.Box3();
+  /** 0 = assembled, 1 = exploded; between the two while parts move (explodePathPoint). */
+  private explodeProgress = 1;
+  /** Explode / collapse in progress. The camera eases to the new framing until the user takes over. */
+  private explodeTween: {
+    frame: number; last: number; duration: number;
+    camera?: { fromPosition: THREE.Vector3; fromTarget: THREE.Vector3; pose: CameraPose; start: number; length: number };
+  } | undefined;
   private readonly onControlsChange = () => this.requestRender();
+  /** Orbiting during an explode animation hands the camera back to the user. */
+  private readonly onControlsStart = () => { if (this.explodeTween) this.explodeTween.camera = undefined; };
   private readonly onWindowResize = () => this.resize();
   private readonly onVisibilityChange = () => {
     if (document.visibilityState === 'visible') this.requestRender();
@@ -104,6 +116,7 @@ export class OrganizerPreview {
     this.controls.rotateSpeed = 0.7;
     this.controls.zoomSpeed = 0.9;
     this.controls.addEventListener('change', this.onControlsChange);
+    this.controls.addEventListener('start', this.onControlsStart);
 
     this.ambient = new THREE.HemisphereLight(0xffffff, 0x899baa, 2.15);
     this.scene.add(this.ambient);
@@ -176,7 +189,7 @@ export class OrganizerPreview {
           mesh.add(edge);
         }
         nextParts.add(mesh);
-        nextPlacements.push({ object: mesh, position: part.position, explode: part.explode });
+        nextPlacements.push({ object: mesh, position: part.position, explode: part.explode, release: part.release ?? ZERO });
       }
 
       try {
@@ -190,7 +203,7 @@ export class OrganizerPreview {
             const object = await this.createReference(key);
             nextKeys.add(object);
             const parent = this.keyParent(key, project.parts);
-            nextPlacements.push({ object, position: key.position, explode: parent?.explode ?? ZERO });
+            nextPlacements.push({ object, position: key.position, explode: parent?.explode ?? ZERO, release: parent?.release ?? ZERO });
           }
         }
       } catch (error) {
@@ -216,6 +229,7 @@ export class OrganizerPreview {
     this.disposeGroup(this.keyGroup);
     if (nextParts.children.length) this.partGroup.add(...[...nextParts.children]);
     if (nextKeys.children.length) this.keyGroup.add(...[...nextKeys.children]);
+    this.stopExplodeTween();
     this.placements = nextPlacements;
     this.project = project;
     this.applyQuality();
@@ -244,10 +258,91 @@ export class OrganizerPreview {
   setExploded(exploded: boolean): void {
     if (this.exploded === exploded) return;
     this.exploded = exploded;
+    const target = exploded ? 1 : 0;
+    const animate = this.placements.length > 0 && !this.disposed && document.visibilityState === 'visible'
+      && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (!animate) {
+      this.stopExplodeTween();
+      this.explodeProgress = target;
+      this.applyPositions();
+      this.refreshBounds();
+      this.updateGround(this.bounds);
+      this.fitCamera(false);
+      return;
+    }
+    // Frame the arrangement the parts move to; the ground covers both while they move.
+    const current = this.explodeProgress;
+    const boundsAt = (progress: number): THREE.Box3 => {
+      this.explodeProgress = progress;
+      this.applyPositions();
+      this.refreshBounds();
+      return this.bounds.clone();
+    };
+    const from = boundsAt(1 - target), to = boundsAt(target);
+    this.explodeProgress = current;
     this.applyPositions();
+    this.updateGround(from.union(to));
+    const direction = this.camera.position.clone().sub(this.controls.target).normalize();
+    const pose = this.cameraPose(to, direction);
+    // Limits that fit both framings, so neither the controls nor the clip planes cut in while moving.
+    this.controls.minDistance = Math.min(this.controls.minDistance, pose.radius * 0.7);
+    this.controls.maxDistance = Math.max(this.controls.maxDistance, pose.distance * 7);
+    this.camera.near = Math.min(this.camera.near, Math.max(pose.radius / 1000, 0.01));
+    this.camera.far = Math.max(this.camera.far, pose.distance * 16);
+    this.camera.updateProjectionMatrix();
+
+    const now = performance.now();
+    const duration = explodeDuration(this.placements.some(p => p.release.some(v => v !== 0)));
+    // Toggling again mid-way sends the parts back along the same path from where they are.
+    const previous = this.explodeTween;
+    const userCamera = !!previous && !previous.camera;
+    const camera = userCamera ? undefined : {
+      fromPosition: this.camera.position.clone(), fromTarget: this.controls.target.clone(), pose,
+      start: now, length: Math.max(1, duration * Math.abs(target - current)),
+    };
+    if (previous) { previous.camera = camera; previous.duration = duration; return; }
+    this.explodeTween = { frame: 0, last: now, duration, camera };
+    this.explodeTween.frame = requestAnimationFrame(this.stepExplode);
+  }
+
+  private readonly stepExplode = (now: number): void => {
+    const tween = this.explodeTween;
+    if (!tween || this.disposed) return;
+    const target = this.exploded ? 1 : 0;
+    const step = Math.max(0, now - tween.last) / tween.duration;
+    tween.last = now;
+    this.explodeProgress = target > this.explodeProgress
+      ? Math.min(target, this.explodeProgress + step)
+      : Math.max(target, this.explodeProgress - step);
+    this.applyPositions();
+    const camera = tween.camera;
+    if (camera) {
+      const t = Math.min(1, Math.max(0, now - camera.start) / camera.length);
+      const k = t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
+      this.camera.position.lerpVectors(camera.fromPosition, camera.pose.position, k);
+      this.controls.target.lerpVectors(camera.fromTarget, camera.pose.target, k);
+      this.controls.update();
+    }
+    this.renderer.shadowMap.needsUpdate = this.quality === 'high';
+    if (this.explodeProgress !== target) {
+      tween.frame = requestAnimationFrame(this.stepExplode);
+      this.renderer.render(this.scene, this.camera);
+      return;
+    }
+    this.explodeTween = undefined;
     this.refreshBounds();
     this.updateGround(this.bounds);
-    this.fitCamera(false);
+    if (camera) this.applyPose(camera.pose);
+    else this.requestRender();
+  };
+
+  /** Ends an explode animation at its final arrangement (the camera stays where it is). */
+  private stopExplodeTween(): void {
+    if (!this.explodeTween) return;
+    cancelAnimationFrame(this.explodeTween.frame);
+    this.explodeTween = undefined;
+    this.explodeProgress = this.exploded ? 1 : 0;
+    this.applyPositions();
   }
 
   setTheme(theme: PreviewTheme): void {
@@ -274,6 +369,7 @@ export class OrganizerPreview {
   }
 
   resetCamera(): void {
+    if (this.explodeTween) this.explodeTween.camera = undefined;
     this.fitCamera(true);
   }
 
@@ -283,6 +379,7 @@ export class OrganizerPreview {
       : view === 'front'
         ? new THREE.Vector3(0, -1, 0.015).normalize()
         : ISO_DIRECTION;
+    if (this.explodeTween) this.explodeTween.camera = undefined;
     this.fitCamera(false, direction);
   }
 
@@ -296,7 +393,9 @@ export class OrganizerPreview {
     window.removeEventListener('resize', this.onWindowResize);
     this.renderer.domElement.removeEventListener('webglcontextlost', this.onContextLost);
     this.renderer.domElement.removeEventListener('webglcontextrestored', this.onContextRestored);
+    this.stopExplodeTween();
     this.controls.removeEventListener('change', this.onControlsChange);
+    this.controls.removeEventListener('start', this.onControlsStart);
     this.controls.dispose();
     this.disposeGroup(this.partGroup);
     this.disposeGroup(this.keyGroup);
@@ -407,12 +506,8 @@ export class OrganizerPreview {
   }
 
   private applyPositions(): void {
-    for (const { object, position, explode } of this.placements) {
-      object.position.set(
-        position[0] + (this.exploded ? explode[0] : 0),
-        position[1] + (this.exploded ? explode[1] : 0),
-        position[2] + (this.exploded ? explode[2] : 0),
-      );
+    for (const { object, position, explode, release } of this.placements) {
+      object.position.set(...explodePathPoint(position, explode, release, this.explodeProgress));
     }
   }
 
@@ -429,17 +524,26 @@ export class OrganizerPreview {
   }
 
   private fitCamera(reset: boolean, requestedDirection?: THREE.Vector3): void {
-    const center = this.bounds.isEmpty() ? new THREE.Vector3() : this.bounds.getCenter(new THREE.Vector3());
-    const size = this.bounds.isEmpty() ? new THREE.Vector3(100, 80, 40) : this.bounds.getSize(new THREE.Vector3());
     const direction = requestedDirection?.clone() ?? (reset
       ? ISO_DIRECTION.clone()
       : this.camera.position.clone().sub(this.controls.target).normalize());
+    this.applyPose(this.cameraPose(this.bounds, direction));
+  }
+
+  /** Where the camera looks from to frame `bounds` along `direction`. */
+  private cameraPose(bounds: THREE.Box3, direction: THREE.Vector3): CameraPose {
+    const center = bounds.isEmpty() ? new THREE.Vector3() : bounds.getCenter(new THREE.Vector3());
+    const size = bounds.isEmpty() ? new THREE.Vector3(100, 80, 40) : bounds.getSize(new THREE.Vector3());
     const radius = Math.max(size.length() / 2, 12);
     const verticalFov = THREE.MathUtils.degToRad(this.camera.fov);
     const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * this.camera.aspect);
     const distance = radius / Math.sin(Math.min(verticalFov, horizontalFov) / 2) * 1.13;
-    this.camera.position.copy(center).addScaledVector(direction, distance);
-    this.controls.target.copy(center);
+    return { position: center.clone().addScaledVector(direction, distance), target: center, radius, distance };
+  }
+
+  private applyPose({ position, target, radius, distance }: CameraPose): void {
+    this.camera.position.copy(position);
+    this.controls.target.copy(target);
     this.controls.minDistance = radius * 0.7;
     this.controls.maxDistance = distance * 7;
     this.camera.near = Math.max(radius / 1000, 0.01);

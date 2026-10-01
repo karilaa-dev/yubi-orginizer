@@ -1,55 +1,93 @@
 /**
- * Pure, DOM-free description of the Tray settings / Dock settings tabs: groups, order,
- * visibility, disabled state, minimums, one-line hints and collapsed-group summaries.
- * main.ts renders markup from TRAY_GROUPS / DOCK_GROUPS once and then applies
- * traySettingsState() / dockSettingsState() in place after every change.
+ * Pure, DOM-free description of the Size tab and the Tray settings / Dock settings tab: groups,
+ * sections, order, visibility, disabled state, minimums, one-line hints and collapsed-group
+ * summaries. The editor renders markup from TRAY_GROUPS / DOCK_GROUPS and SIZE_SECTIONS once
+ * and then applies traySettingsState() / dockSettingsState() in place after every change.
  */
 import { defaultConfig } from '../config';
-import { inventoryTrayLayout, trayFootprintError } from '../geometry';
+import { dockLayout, inventoryTrayLayout, trayFootprintError } from '../geometry';
 import { H20_V7 } from '../geometry/tray-h20';
 import { TRAY_SNAP } from '../geometry/tray-snap';
 import { TRAY_SLIDE_DIRECTIONS, traySlideDirection } from '../tray-slide';
 import type { HolderConfig, TemplateId, TrayConnection } from '../types';
 
-export type TrayGroupId = 'layout' | 'stacking' | 'lid' | 'size' | 'pockets';
-export type DockGroupId = 'layout' | 'size' | 'text';
+export type Panel = 'keys' | 'size' | 'settings';
+export type TrayGroupId = 'stacking' | 'lid' | 'pockets';
+export type DockGroupId = 'text';
 export type GroupId = TrayGroupId | DockGroupId;
+export type SizeSectionId = 'size' | 'spacing';
 
 export const TRAY_CONTROLS = [
   'tray.columns', 'tray.spacing', 'tray.rowGap',
   'tray.connection', 'tray.slideDirection',
   'tray.lid', 'tray.lidStyle', 'tray.lidText', 'tray.lidTextPercent', 'tray.lidTextRotation',
   'tray.sizeLocked', 'tray.width', 'tray.depth', 'tray.height', 'tray.margin',
-  'tray.scoop', 'tray.retention', 'tray.sideText',
+  'tray.scoop', 'tray.retention', 'tray.sideText', 'tray.sideTextPercent',
 ] as const;
 export type TrayControlId = (typeof TRAY_CONTROLS)[number];
-export const DOCK_CONTROLS = ['dock.columns', 'dock.spacing', 'dock.rowSpacing', 'dock.height', 'dock.edgeMargin', 'dock.depthMargin', 'dock.title'] as const;
+export const DOCK_CONTROLS = ['dock.columns', 'dock.spacing', 'dock.rowSpacing', 'dock.height', 'dock.edgeMargin', 'dock.depthMargin', 'dock.title', 'dock.titlePercent'] as const;
 export type DockControlId = (typeof DOCK_CONTROLS)[number];
 
 export interface GroupDefinition<G extends string, C extends string> { id: G; title: string; controls: readonly C[] }
+/** Tray settings tab. */
 export const TRAY_GROUPS: readonly GroupDefinition<TrayGroupId, TrayControlId>[] = [
-  { id: 'layout', title: 'Layout', controls: ['tray.columns', 'tray.spacing', 'tray.rowGap'] },
   { id: 'stacking', title: 'Stacking', controls: ['tray.connection', 'tray.slideDirection'] },
   { id: 'lid', title: 'Lid', controls: ['tray.lid', 'tray.lidStyle', 'tray.lidText', 'tray.lidTextPercent', 'tray.lidTextRotation'] },
-  { id: 'size', title: 'Size', controls: ['tray.sizeLocked', 'tray.width', 'tray.depth', 'tray.height', 'tray.margin'] },
-  { id: 'pockets', title: 'Pockets & text', controls: ['tray.scoop', 'tray.retention', 'tray.sideText'] },
+  { id: 'pockets', title: 'Pockets & text', controls: ['tray.scoop', 'tray.retention', 'tray.sideText', 'tray.sideTextPercent'] },
 ];
+/** Dock settings tab. */
 export const DOCK_GROUPS: readonly GroupDefinition<DockGroupId, DockControlId>[] = [
-  { id: 'layout', title: 'Layout', controls: ['dock.columns', 'dock.spacing', 'dock.rowSpacing'] },
-  { id: 'size', title: 'Size', controls: ['dock.height', 'dock.edgeMargin', 'dock.depthMargin'] },
-  { id: 'text', title: 'Text', controls: ['dock.title'] },
+  { id: 'text', title: 'Text', controls: ['dock.title', 'dock.titlePercent'] },
 ];
+/** Size tab: the outside size on top, spacing below. */
+export const SIZE_SECTIONS: Record<TemplateId, readonly GroupDefinition<SizeSectionId, string>[]> = {
+  inventory_tray: [
+    { id: 'size', title: 'Size', controls: ['tray.sizeLocked', 'tray.width', 'tray.depth', 'tray.height'] },
+    { id: 'spacing', title: 'Spacing', controls: ['tray.spacing', 'tray.rowGap', 'tray.margin'] },
+  ],
+  desktop_dock: [
+    { id: 'size', title: 'Size', controls: ['dock.height'] },
+    { id: 'spacing', title: 'Spacing', controls: ['dock.spacing', 'dock.rowSpacing', 'dock.edgeMargin', 'dock.depthMargin'] },
+  ],
+};
 /** Used until the user opens or closes a group for that organizer type. */
 export const DEFAULT_OPEN_GROUPS: Record<TemplateId, readonly GroupId[]> = {
-  inventory_tray: ['layout', 'stacking'],
-  desktop_dock: ['layout', 'size', 'text'],
+  inventory_tray: ['stacking', 'lid'],
+  desktop_dock: ['text'],
 };
 
-/** The group that holds a data-option id, or undefined (e.g. key label inputs). */
+/** data-option / error ids shown in the Keys tab: labels, key label inputs and Columns. */
+export const isKeysControl = (id: string): boolean =>
+  id === 'labels' || id === 'labelSize' || id.startsWith('label-') || id === 'tray.columns' || id === 'dock.columns';
+
+/** The tab that shows a control. */
+export function panelOfControl(template: TemplateId, control: string): Panel {
+  if (isKeysControl(control)) return 'keys';
+  return SIZE_SECTIONS[template].some(s => s.controls.includes(control)) ? 'size' : 'settings';
+}
+
+/** The settings group that holds a data-option id, or undefined (Keys and Size tab controls). */
 export function groupOfControl(template: TemplateId, control: string): GroupId | undefined {
   const groups: readonly GroupDefinition<GroupId, string>[] = template === 'inventory_tray' ? TRAY_GROUPS : DOCK_GROUPS;
   return groups.find(g => g.controls.includes(control))?.id;
 }
+
+/** Another saved tray whose width and depth were copied (Size › Footprint › Match project). */
+export interface FootprintMatch { id: string; name: string; width: number; depth: number }
+/** 'choosing': Match project is selected but no project is picked yet. */
+export type MatchState = FootprintMatch | 'choosing' | undefined;
+export type FootprintChoice = 'fit' | 'fixed' | 'match';
+
+/** The Footprint segment to show. A matched size stays "Match project" until it is changed. */
+export function footprintChoice(config: HolderConfig, match: MatchState): FootprintChoice {
+  const footprint = config.options.tray.footprint;
+  if (match === 'choosing') return 'match';
+  if (!footprint) return 'fit';
+  return match && footprint.width === match.width && footprint.depth === match.depth ? 'match' : 'fixed';
+}
+
+export const FRONT_TEXT_NOTE = "Engraved into the front wall, so it won't print perfectly crisp. Larger text reads better.";
+export const RETENTION_NOTE = 'Not tested yet: keys may sit too tight or too loose. Print a one-key tray first, ideally in PETG.';
 
 export function trayMinimumMargin(config: HolderConfig): number {
   if (config.template !== 'inventory_tray') return 5;
@@ -79,7 +117,7 @@ export interface TraySettingsState {
     lockLabel: string | null;
   };
   size: {
-    fixed: boolean; width: number; depth: number; height: number; requiredWidth: number; requiredDepth: number;
+    fixed: boolean; choice: FootprintChoice; width: number; depth: number; height: number; requiredWidth: number; requiredDepth: number;
     tooSmall: boolean;
     /** One line under Footprint (fit readout, requirement or error). */
     readout: string;
@@ -87,7 +125,12 @@ export interface TraySettingsState {
     grow: { width: number; depth: number; label: string } | null;
   };
 }
-export interface DockSettingsState { groups: GroupState<DockGroupId>[]; controls: Record<DockControlId, ControlState> }
+export interface DockSettingsState {
+  groups: GroupState<DockGroupId>[];
+  controls: Record<DockControlId, ControlState>;
+  /** Size tab readout: the footprint the spacing and margins make. */
+  size: { readout: string };
+}
 
 export const CONNECTION_OPTIONS: readonly { value: TrayConnection; title: string; description: string }[] = [
   { value: 'none', title: 'Standalone', description: 'A single tray.' },
@@ -101,15 +144,12 @@ export const SLIDE_DIRECTION_OPTIONS = TRAY_SLIDE_DIRECTIONS.map(d => ({ value: 
 
 const fmt = (n: number): string => String(Math.round(n * 100) / 100);
 const quote = (text: string, max: number): string => { const t = text.trim(); return `“${t.length > max ? `${t.slice(0, max - 1)}…` : t}”`; };
-const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
-const columnsSummary = (columns: number, computed: number | undefined, spacing: number): string =>
-  `${columns === 0 ? (computed ? `Auto · ${plural(computed, 'column')}` : 'Auto') : plural(columns, 'column')} · ${fmt(spacing)} mm`;
 
 function state(visible: boolean, hint = '', disabled = false, min?: number): ControlState {
   return { visible, disabled: visible && disabled, hint: visible ? hint : '', ...(min !== undefined ? { min } : {}) };
 }
 
-export function traySettingsState(config: HolderConfig, errors: ReadonlySet<string> = new Set()): TraySettingsState {
+export function traySettingsState(config: HolderConfig, errors: ReadonlySet<string> = new Set(), match?: MatchState): TraySettingsState {
   const t = config.options.tray, d = defaultConfig().options.tray;
   const layout = inventoryTrayLayout(config);
   const hasKeys = config.slots.length > 0;
@@ -117,6 +157,7 @@ export function traySettingsState(config: HolderConfig, errors: ReadonlySet<stri
   const lidText = t.lidText.trim().length > 0;
   const legacyLidSize = t.lidTextPercent === undefined;
   const fixed = t.footprint !== null;
+  const choice = footprintChoice(config, match);
   const tooSmall = hasKeys && trayFootprintError(config) !== undefined;
   const width = layout.width, depth = layout.depth, rw = layout.requiredWidth, rd = layout.requiredDepth;
   const direction = traySlideDirection(t.slideDirection);
@@ -131,45 +172,43 @@ export function traySettingsState(config: HolderConfig, errors: ReadonlySet<stri
     'tray.lidTextPercent': state(t.lid && lidText, legacyLidSize ? 'Available after the preview updates.' : '', legacyLidSize),
     'tray.lidTextRotation': state(t.lid && lidText, '', legacyLidSize),
     'tray.sizeLocked': state(true),
-    'tray.width': state(fixed), 'tray.depth': state(fixed),
+    'tray.width': state(choice === 'fixed'), 'tray.depth': state(choice === 'fixed'),
     'tray.height': state(true, snap ? `At least ${fmt(TRAY_SNAP.minimumHeight)} mm for snap-fit.` : '', false, trayMinimumHeight(config)),
     'tray.margin': state(true, snap ? `At least ${fmt(TRAY_SNAP.margin)} mm for snap-fit.` : '', false, trayMinimumMargin(config)),
     'tray.scoop': state(true),
-    'tray.retention': state(true, 'Grip keys in place. Best printed in PETG.'),
+    'tray.retention': state(true, RETENTION_NOTE),
     'tray.sideText': state(true),
+    'tray.sideTextPercent': state(t.sideText.trim().length > 0, FRONT_TEXT_NOTE),
   };
 
   const grow = tooSmall ? { width: Math.max(width, rw), depth: Math.max(depth, rd), label: '' } : null;
   if (grow) grow.label = `Use ${fmt(grow.width)} × ${fmt(grow.depth)} mm`;
-  const readout = !fixed
+  const matched = match && match !== 'choosing' && choice === 'match' ? match : undefined;
+  const readout = choice === 'match' && !matched ? 'Choose a tray to copy its width and depth.'
+    : !fixed
     ? (hasKeys ? `${fmt(width)} × ${fmt(depth)} mm, fits your keys` : 'Add keys to see the size.')
     : tooSmall ? `Too small. These keys need at least ${fmt(rw)} × ${fmt(rd)} mm.`
+    : matched ? `${fmt(width)} × ${fmt(depth)} mm, same as ${quote(matched.name, 28)}.`
     : hasKeys ? `Keys need at least ${fmt(rw)} × ${fmt(rd)} mm.` : '';
 
   const connectionTitle = { none: 'Standalone', stackable: 'Stackable', h20_slide_v7: `Slide-lock · ${SLIDE_DIRECTION_OPTIONS.find(o => o.value === direction.id)!.label}`, snap_fit: 'Snap-fit (older version)' }[t.connection];
   const lidSummary = !t.lid ? 'No lid' : `${snap ? 'Snap-fit lid' : t.lidStyle === 'minimal' ? 'Minimal lid' : 'Regular lid'}${lidText ? ` · ${quote(t.lidText, 16)}` : ''}`;
-  const sizeSummary = tooSmall ? 'Too small for these keys'
-    : `${fixed ? 'Fixed' : 'Fit to keys'} · ${hasKeys || fixed ? `${fmt(width)} × ${fmt(depth)} × ${fmt(layout.height)} mm` : `${fmt(layout.height)} mm high`}`;
   const scoopName = { small: 'Small', default: 'Standard', large: 'Large' }[t.scoop];
   const pocketsSummary = `${scoopName} scoop · ${t.retention ? 'Tabs' : 'No tabs'}${t.sideText.trim() ? ` · ${quote(t.sideText, 14)}` : ''}`;
 
   const summaries: Record<TrayGroupId, string> = {
-    layout: columnsSummary(t.columns, hasKeys ? layout.columns : undefined, t.spacing),
     stacking: connectionTitle,
     lid: lidSummary,
-    size: sizeSummary,
     pockets: pocketsSummary,
   };
   const modified: Record<TrayGroupId, boolean> = {
-    layout: t.columns !== d.columns || t.spacing !== d.spacing || t.rowGap !== d.rowGap,
     stacking: t.connection !== d.connection || (h20 && t.slideDirection !== d.slideDirection),
     lid: t.lid !== d.lid || t.lidStyle !== d.lidStyle || t.lidText !== d.lidText || (t.lidTextPercent ?? 100) !== 100 || (t.lidTextRotation ?? 0) !== 0,
-    size: fixed || t.height !== d.height || t.margin !== d.margin,
-    pockets: t.scoop !== d.scoop || t.retention !== d.retention || t.sideText !== d.sideText,
+    pockets: t.scoop !== d.scoop || t.retention !== d.retention || t.sideText !== d.sideText || (t.sideTextPercent ?? d.sideTextPercent) !== d.sideTextPercent,
   };
   const groups = TRAY_GROUPS.map(g => ({
     id: g.id, title: g.title, summary: summaries[g.id], modified: modified[g.id],
-    error: g.controls.some(c => errors.has(c)) || (g.id === 'size' && tooSmall),
+    error: g.controls.some(c => errors.has(c)),
   }));
 
   return {
@@ -182,25 +221,24 @@ export function traySettingsState(config: HolderConfig, errors: ReadonlySet<stri
       callout: !stacked ? '' : fixed ? `Every layer uses ${fmt(width)} × ${fmt(depth)} mm.` : 'Stacked layers must be the same size.',
       lockLabel: stacked && !fixed && hasKeys ? `Fix size at ${fmt(width)} × ${fmt(depth)} mm` : null,
     },
-    size: { fixed, width, depth, height: layout.height, requiredWidth: rw, requiredDepth: rd, tooSmall, readout, grow },
+    size: { fixed, choice, width, depth, height: layout.height, requiredWidth: rw, requiredDepth: rd, tooSmall, readout, grow },
   };
 }
 
 export function dockSettingsState(config: HolderConfig, errors: ReadonlySet<string> = new Set()): DockSettingsState {
   const o = config.options.dock, d = defaultConfig().options.dock;
   const summaries: Record<DockGroupId, string> = {
-    layout: columnsSummary(o.columns, undefined, o.spacing),
-    size: `Base ${fmt(o.height)} mm · margins ${fmt(o.edgeMargin)} / ${fmt(o.depthMargin)} mm`,
     text: o.title.trim() ? quote(o.title, 20) : 'No text',
   };
   const modified: Record<DockGroupId, boolean> = {
-    layout: o.columns !== d.columns || o.spacing !== d.spacing || o.rowSpacing !== d.rowSpacing,
-    size: o.height !== d.height || o.edgeMargin !== d.edgeMargin || o.depthMargin !== d.depthMargin,
-    text: o.title !== d.title,
+    text: o.title !== d.title || (o.titlePercent ?? d.titlePercent) !== d.titlePercent,
   };
   const controls = Object.fromEntries(DOCK_CONTROLS.map(c => [c, state(true)])) as Record<DockControlId, ControlState>;
+  controls['dock.titlePercent'] = state(o.title.trim().length > 0, FRONT_TEXT_NOTE);
+  const dock = dockLayout(config);
   return {
     groups: DOCK_GROUPS.map(g => ({ id: g.id, title: g.title, summary: summaries[g.id], modified: modified[g.id], error: g.controls.some(c => errors.has(c)) })),
     controls,
+    size: { readout: config.slots.length ? `${fmt(dock.width)} × ${fmt(dock.depth)} mm. Spacing and margins set the size.` : 'Add keys to see the size.' },
   };
 }

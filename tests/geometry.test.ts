@@ -11,13 +11,17 @@ function sampleConfig(): HolderConfig {
   const config = defaultConfig();
   config.template = 'desktop_dock';
   config.slots = KEY_TYPES.map((type, i) => ({ id: `sample-${i}`, type, label: type, occupied: true }));
+  // These expectations were measured with retention tabs and the v1.0 spacing.
+  Object.assign(config.options.tray, { retention: true, spacing: 27, rowGap: 4 });
+  Object.assign(config.options.dock, { spacing: 26, rowSpacing: 45, edgeMargin: 18, depthMargin: 22.5 });
   return config;
 }
 
 function sourceCall(source: string): { module: string; args: unknown[] } {
   const last = source.trim().split('\n').at(-1)!;
   const match = /^(\w+)\((.*)\);$/.exec(last)!;
-  return { module: match[1], args: JSON.parse(`[${match[2]}]`) as unknown[] };
+  // Positional arguments only: trailing named ones (side_text_percent=50) are not JSON.
+  return { module: match[1], args: JSON.parse(`[${match[2].replace(/(,\w+=[\d.]+)+$/, '')}]`) as unknown[] };
 }
 
 function repeated(count: number, type: KeyType = 'C'): HolderConfig {
@@ -110,7 +114,7 @@ describe('parametric projects', () => {
     expect(project.keys[0].position[2]).toBe(25 - 8.5);
     expect(project.parts[0].scad).toContain('w=8.300, t=2.560, depth=6.600');
   });
-  it('allows compact 18 mm dock rows while retaining saved spacing and the 45 mm default', () => {
+  it('allows compact 18 mm dock rows (the default) while retaining saved spacing', () => {
     const config = sampleConfig();
     Object.assign(config.options.dock, { columns: 3, spacing: 22, rowSpacing: 18, edgeMargin: 12, depthMargin: 18, height: 11 });
     const compact = buildProject(config);
@@ -119,7 +123,7 @@ describe('parametric projects', () => {
     expect(compact.keys[0].position[2]).toBe(2.5);
     config.options.dock.rowSpacing = 28;
     expect(buildProject(config).dimensions[1]).toBe(64);
-    expect(defaultConfig().options.dock.rowSpacing).toBe(45);
+    expect(defaultConfig().options.dock.rowSpacing).toBe(18);
   });
   it('adjusts tray outer dimensions around an unchanged set of pockets', () => {
     const config = sampleConfig();
@@ -193,7 +197,7 @@ describe('inventory tray retention, stacking, and layer text', () => {
     expect(inventoryDepths[2] - inventoryDepths[1]).toBeCloseTo(2);
   });
 
-  it('defaults to integral retention, preserving seated key positions and the original footprint', () => {
+  it('adds integral retention without moving seated keys or the footprint', () => {
     const config = sampleConfig(); config.template = 'inventory_tray';
     const retained = buildProject(config);
     expect(sourceCall(retained.parts[0].scad)).toMatchObject({ module: 'inventory_tray' });

@@ -97,12 +97,60 @@ export function segmentedField(o: SegmentedOptions): string {
   </fieldset>`;
 }
 
-export interface SwitchOptions { id: ControlId; label: string; checked: boolean; hint?: string }
+/* ───────────── Compact rows (text size and rotation) ───────────── */
+
+/** Visible short label ("Size"); screen readers hear `spoken` ("Lid text size") instead. */
+const shortLabel = (label: string, spoken?: string): string =>
+  spoken ? `<span aria-hidden="true">${esc(label)}</span><span class="sr-only">${esc(spoken)}</span>` : esc(label);
+
+export interface InlineSliderOptions extends SliderOptions {
+  /** Full name for screen readers when the visible label is short. */
+  spoken?: string;
+}
+
+/** One compact row: short label | range | number field with unit. */
+export function inlineSliderField(o: InlineSliderOptions): string {
+  const unit = o.unit ?? 'mm';
+  const disabled = o.disabled ? ' disabled' : '';
+  const value = numberValue(o.value);
+  const name = o.spoken ?? o.label;
+  return `<div class="inline-field inline-slider" data-control="${o.id}">
+    <label for="${o.id}">${shortLabel(o.label, o.spoken)}<span class="sr-only"> (${unitName(unit)})</span></label>
+    <input type="range" data-option="${o.id}" min="${o.min}" max="${o.max}" step="${o.step}" value="${value}" aria-label="${esc(name)} (${unitName(unit)})" ${describedBy(o.id)}${disabled}/>
+    <span class="number-wrap"><input id="${o.id}" type="number" data-option="${o.id}" min="${o.min}" max="${o.max}" step="${unit === '%' ? 'any' : o.step}" value="${value}" inputmode="decimal" ${describedBy(o.id)}${disabled}/><span class="unit" aria-hidden="true">${unit}</span></span>
+    ${fieldNotes(o.id, o.hint)}
+  </div>`;
+}
+
+export interface InlineSegmentedOptions extends SegmentedOptions { spoken?: string }
+
+/** One compact row: short label | segmented radios. */
+export function inlineSegmentedField(o: InlineSegmentedOptions): string {
+  const name = o.name ?? o.id;
+  const segments = o.options.map(option => {
+    const checked = String(option.value) === String(o.value) ? ' checked' : '';
+    return `<label><input type="radio" name="${name}" value="${option.value}" data-option="${o.id}"${o.numeric ? ' data-numeric' : ''}${checked}/>`
+      + `<span>${option.html ?? esc(option.label)}</span></label>`;
+  }).join('');
+  return `<div class="inline-field inline-segmented${o.className ? ` ${o.className}` : ''}" role="radiogroup" aria-labelledby="legend-${o.id}" data-control="${o.id}" ${describedBy(o.id)}>
+    <span class="inline-label" id="legend-${o.id}">${shortLabel(o.legend, o.spoken)}</span>
+    <div class="segmented">${segments}</div>
+    ${fieldNotes(o.id, o.hint, o.hintExtra)}
+  </div>`;
+}
+
+/** A text field with its compact Size (and Rotation) rows indented below it. */
+export function textSettingField(text: TextOptions, rows: string): string {
+  return `<div class="text-setting">${textField(text)}<div class="text-options">${rows}</div></div>`;
+}
+
+export interface SwitchOptions { id: ControlId; label: string; checked: boolean; hint?: string; badge?: string }
 
 /** A real checkbox with role=switch inside the existing toggle-row structure. */
 export function switchField(o: SwitchOptions): string {
+  const badge = o.badge ? ` <span class="badge">${esc(o.badge)}</span>` : '';
   return `<div class="switch-field" data-control="${o.id}">
-    <label class="toggle-row" for="${o.id}"><span>${esc(o.label)}</span><input id="${o.id}" type="checkbox" role="switch" data-option="${o.id}"${o.checked ? ' checked' : ''} ${describedBy(o.id)}/><span class="switch" aria-hidden="true"></span></label>
+    <label class="toggle-row" for="${o.id}"><span>${esc(o.label)}${badge}</span><input id="${o.id}" type="checkbox" role="switch" data-option="${o.id}"${o.checked ? ' checked' : ''} ${describedBy(o.id)}/><span class="switch" aria-hidden="true"></span></label>
     ${fieldNotes(o.id, o.hint)}
   </div>`;
 }
@@ -130,6 +178,8 @@ const FIELD_NAMES: Record<string, { label: string; unit?: 'mm' | '%' }> = {
   'Lid text percentage': { label: 'Text size', unit: '%' },
   'Tray lid text': { label: 'Lid text' },
   'Side text': { label: 'Front text' },
+  'Side text percentage': { label: 'Front text size', unit: '%' },
+  'Dock title percentage': { label: 'Front text size', unit: '%' },
   'Dock spacing': { label: 'Column spacing', unit: 'mm' },
   'Dock row spacing': { label: 'Row spacing', unit: 'mm' },
   'Dock side margin': { label: 'Side margin', unit: 'mm' },

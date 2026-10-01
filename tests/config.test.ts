@@ -105,7 +105,11 @@ describe('portable configurations', () => {
     });
     expect(parsed.slots).toEqual(old.slots);
     expect(parseConfig(serializeConfig(parsed))).toEqual(parsed);
-    expect(defaultConfig().options.tray).toMatchObject({ retention: true, connection: 'none', sideText: '' });
+    // New projects start without the untested retention tabs; projects saved before the option keep them.
+    expect(defaultConfig().options.tray).toMatchObject({ retention: false, connection: 'none', sideText: '', sideTextPercent: 50 });
+    // New designs start at the minimum spacing.
+    expect(defaultConfig().options.tray).toMatchObject({ spacing: 24, rowGap: 2, margin: 5 });
+    expect(defaultConfig().options.dock).toMatchObject({ spacing: 22, rowSpacing: 18, edgeMargin: 12, depthMargin: 18, titlePercent: 30 });
   });
   it('defaults a missing legacy row gap and drops the retired travel-case row pitch', () => {
     const old = JSON.parse(JSON.stringify(sampleConfig()));
@@ -115,7 +119,7 @@ describe('portable configurations', () => {
     expect(parsed.options.tray.rowGap).toBe(4);
     expect(parsed.options.tray).not.toHaveProperty('rowSpacing');
     expect(parseConfig(serializeConfig(parsed))).toEqual(parsed);
-    expect(defaultConfig().options.tray).toMatchObject({ rowGap: 4 });
+    expect(defaultConfig().options.tray).toMatchObject({ rowGap: 2 }); // new designs: minimum spacing
   });
   it.each([2, 4, 4.5, 40])('round trips explicit tray row gap %s', rowGap => {
     const c = sampleConfig();
