@@ -1,8 +1,8 @@
-/** Generate a real WASM travel-case fixture, then validate the actual 3MF output.
+/** Generate a real WASM inventory-tray-and-lid fixture, then validate the actual 3MF output.
  * node --import tsx scripts/validate-3mf.ts [--native=artifacts/3mf-native-roundtrip.3mf]
  * Native roundtrip command (isolated settings, no slicing/printer communication):
  * BambuStudio --datadir /tmp/keyform-bambu-3mf-check --arrange 1 --export-3mf
- *   /absolute/artifacts/3mf-native-roundtrip.3mf /absolute/artifacts/travel-case-example.3mf
+ *   /absolute/artifacts/3mf-native-roundtrip.3mf /absolute/artifacts/inventory-tray-example.3mf
  */
 import assert from 'node:assert/strict';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -15,13 +15,13 @@ import { defaultConfig } from '../src/config';
 import { renderScadInNode } from '../src/runtime/node-render';
 import type { HolderConfig, ProjectGeometry } from '../src/types';
 
-const artifact = 'artifacts/travel-case-example.3mf';
-const source = 'current travel_case generator';
+const artifact = 'artifacts/inventory-tray-example.3mf';
+const source = 'current inventory_tray generator';
 await mkdir('artifacts', { recursive: true });
 const vite = await createServer({ configFile: false, logLevel: 'silent', optimizeDeps: { noDiscovery: true, include: [] }, server: { middlewareMode: true, hmr: false, ws: false }, appType: 'custom' });
 const { buildProject } = await vite.ssrLoadModule('/src/geometry/index.ts') as { buildProject(config: HolderConfig): ProjectGeometry };
 await vite.close();
-const config = defaultConfig(); config.template = 'travel_case'; config.slots = config.slots.slice(0, 1);
+const config = defaultConfig(); config.template = 'inventory_tray'; config.slots = config.slots.slice(0, 1); config.options.tray.lid = true;
 const project = buildProject(config);
 // Use stable part IDs as names in the native roundtrip checks below.
 const parts = project.parts.map(part => ({ ...part, name: part.id }));
@@ -31,7 +31,7 @@ for (const part of parts) {
   const { stl } = await renderScadInNode(part.scad);
   assert.ok(stl); inspectPrintableMesh(stl); meshes.set(part.id, stl);
 }
-assert.equal(parts.length, 3, 'The travel-case fixture has three printable parts');
+assert.equal(parts.length, 2, 'The inventory-tray fixture has a tray and a lid');
 const output = build3mf(project, meshes);
 await writeFile(artifact, output);
 const entries = unzipSync(output);

@@ -180,7 +180,7 @@ async function bezelGeometry() {
 }
 async function cNanoGripGeometry() {
   const zero: { name: string; source: string }[] = [];
-  // All flat-cradle scoop sizes, including the smaller travel-case scoop.
+  // All flat-cradle scoop sizes.
   for (const r of [4,5,6,7]) for (const retention of [false,true]) {
     const name = `CN-access/r${r}/${retention}`;
     const tray = `inventory_tray(["CN"],[""],[[0,0]],40,36,8.6,${r},23,${retention});`;

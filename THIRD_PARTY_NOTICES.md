@@ -1,12 +1,12 @@
 # Third-party notices
 
-Keyform uses the following third-party components. Exact installed versions and dependency integrity values are recorded in `package-lock.json`. The license labels below reflect the installed packages and bundled notices; they do not replace the complete license texts.
+yubi-orginizer uses the following third-party components. Exact installed versions and dependency integrity values are recorded in `package-lock.json`. The license labels below reflect the installed packages and bundled notices; they do not replace the complete license texts.
 
 ## Model generation and fonts
 
 **OpenSCAD WASM:** [`@lofcz/openscad-wasm@0.0.2`](https://www.npmjs.com/package/@lofcz/openscad-wasm/v/0.0.2), pinned exactly by this application, declares **GPL-2.0-only**. Its full license is in `node_modules/@lofcz/openscad-wasm/COPYING`. The [source and build instructions](https://github.com/lofcz/openscad-wasm) identify the community build and its relationship to the [upstream OpenSCAD WASM project](https://github.com/openscad/openscad-wasm). The package includes the compiled OpenSCAD runtime and its dependencies; their upstream notices remain applicable. This project does not relabel that binary as MIT.
 
-**Liberation fonts:** The runtime's bundled fonts carry **SIL Open Font License 1.1**. The packaged notice credits digitized data to Google Corporation (2010), with reserved names Arimo, Tinos, and Cousine, and Red Hat, Inc. (2012), with reserved name Liberation. The complete `LICENSE` and `AUTHORS` files are embedded in the package's `openscad.fonts.js` alongside the font files. See the [Liberation Fonts source and license](https://github.com/liberationfonts/liberation-fonts/blob/main/LICENSE). Keyform uses Liberation Sans Bold for manufactured lettering.
+**Liberation fonts:** The runtime's bundled fonts carry **SIL Open Font License 1.1**. The packaged notice credits digitized data to Google Corporation (2010), with reserved names Arimo, Tinos, and Cousine, and Red Hat, Inc. (2012), with reserved name Liberation. The complete `LICENSE` and `AUTHORS` files are embedded in the package's `openscad.fonts.js` alongside the font files. See the [Liberation Fonts source and license](https://github.com/liberationfonts/liberation-fonts/blob/main/LICENSE). yubi-orginizer uses Liberation Sans Bold for manufactured lettering.
 
 ## Application and development dependencies
 

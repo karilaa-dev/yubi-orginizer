@@ -66,15 +66,12 @@ describe('inventory tray lift-off lid', () => {
     expect(larger.parts[1].scad.trim().split('\n').at(-1)).toContain(',10);');
   });
 
-  it('keeps lid options independent of travel cases and fit tools', () => {
-    const config = example();
-    for (const template of ['travel_case', 'key_fit_tester', 'interface_tests'] as const) {
-      config.template = template;
-      config.options.tray.lid = false;
-      const before = buildProject(config);
-      config.options.tray.lid = true;
-      config.options.tray.lidText = 'Inventory cover';
-      expect(buildProject(config)).toEqual(before);
-    }
+  it('keeps lid options independent of the desktop dock', () => {
+    const config = example(); config.template = 'desktop_dock';
+    config.options.tray.lid = false;
+    const before = buildProject(config);
+    config.options.tray.lid = true;
+    config.options.tray.lidText = 'Inventory cover';
+    expect(buildProject(config)).toEqual(before);
   });
 });

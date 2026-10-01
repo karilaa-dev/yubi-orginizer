@@ -77,7 +77,7 @@ function occupiedKeys(project: ProjectGeometry): string {
 }
 
 /** Parse the actual exported call so the probe follows per-part layout and
- * width constraints, including the six independently printable cartridges. */
+ * width constraints. */
 function call(part: PartSpec) {
   const last = part.scad.trim().split('\n').at(-1)!;
   const match = /^(\w+)\((.*)\);$/.exec(last); assert.ok(match, `Unrecognized part call: ${last}`);
@@ -87,9 +87,7 @@ function keyLabels(part: PartSpec): { labels: string[]; top: number; blank: stri
   const { module, args } = call(part);
   let types: string[], labels: string[], xy: [number, number][], top: number, scale: number, width: number, nominal: number, flat: boolean;
   if (module === 'dock') [types, labels, xy, top, scale, width, nominal, flat] = [args[0], args[1], args[2], args[5], args[7] ?? 1, 20, 2.55, false];
-  else if (module === 'tray' || module === 'inventory_tray') [types, labels, xy, top, scale, width, nominal, flat] = [args[0], args[1], args[2], args[5], args[module === 'tray' ? 8 : 12] ?? 1, args[7], 2.7, true];
-  else if (module === 'cartridge') [types, labels, xy, top, scale, width, nominal, flat] = [[args[0]], [args[1]], [[0, 0]], 13.6, args[2] ?? 1, 20, 2, false];
-  else if (module === 'grid_tile') [types, labels, xy, top, scale, width, nominal, flat] = [args[0], args[1], args[2], (args[5] ? 13 : 15) + args[6], args[7] ?? 1, 32, 2.7, args[5]];
+  else if (module === 'inventory_tray') [types, labels, xy, top, scale, width, nominal, flat] = [args[0], args[1], args[2], args[5], args[12] ?? 1, args[7], 2.7, true];
   else return null;
   const text = labels.map((label, i) => `label(${JSON.stringify(label)},${xy[i][0]},${xy[i][1]}-${flat ? 'flat' : 'upright'}_label_distance(${JSON.stringify(types[i])},${scale}),${top},${width},${nominal * scale});`);
   const features: string[] = [];
@@ -97,7 +95,7 @@ function keyLabels(part: PartSpec): { labels: string[]; top: number; blank: stri
     if (args[8]) types.forEach((type, i) => features.push(`translate([${xy[i][0]},${xy[i][1]},0]) {tray_retention_relief(${JSON.stringify(type)},${top});tray_retention_lips(${JSON.stringify(type)},${top});}`));
     features.push(`tray_stack_pillars(${JSON.stringify(args[11] ?? [])},${top},tray_stack_gap(${JSON.stringify(args[8] ?? true)}));`);
   }
-  const blankArgs = [...args]; blankArgs[1] = module === 'cartridge' ? '' : labels.map(() => '');
+  const blankArgs = [...args]; blankArgs[1] = labels.map(() => '');
   return { labels: text, top, blank: `${library}\n${module}(${blankArgs.map((v) => JSON.stringify(v)).join(',')});`, features: features.join('\n') };
 }
 
@@ -106,8 +104,7 @@ function config(template: TemplateId, size: number, stress = false): HolderConfi
   const text = ['W'.repeat(18), 'ǗӜΐgj', 'Ж'.repeat(18), 'WMЖЩǄѼ'.repeat(3), 'ÁÉÑŴȀİŶgj', '"\\ΩЖ'];
   c.slots = KEY_TYPES.map((type, i) => ({ id: `key-${i}`, type, label: stress ? text[i] : KEY_CATALOG[type].short, occupied: true }));
   Object.assign(c.options.dock, { columns: 3, spacing: 22, rowSpacing: 18, edgeMargin: 12, depthMargin: 18, height: 11, title: '' });
-  Object.assign(c.options.tray, { columns: 3, spacing: 24, rowGap: 2, rowSpacing: 66, margin: 5, height: 8.6, scoop: 'large', retention: true, connection: 'none', sideText: '' });
-  c.options.rail.endMargin = 5; c.options.grid.mode = 'mixed'; c.options.grid.extraHeight = 0; c.options.case.headroom = 0; c.options.case.title = '';
+  Object.assign(c.options.tray, { columns: 3, spacing: 24, rowGap: 2, margin: 5, height: 8.6, scoop: 'large', retention: true, connection: 'none', sideText: '' });
   return c;
 }
 
@@ -135,7 +132,7 @@ async function projectChecks(c: HolderConfig, scenario: string) {
         const hits = zHits(stl, x, y), blankHits = zHits(blank, x, y);
         assert.ok(hits.some((z) => Math.abs(z - expected) < 0.001), `${scenario}/${key.type}: calibrated cavity floor changed (${hits}, expected ${expected})`);
         assert.deepEqual(hits, blankHits, `${scenario}/${key.type}: key label changes the calibrated cavity surface`);
-        if (c.template === 'inventory_tray' || c.template === 'travel_case') assert.ok(expected >= 1.999, `${scenario}: tray floor is thinner than 2 mm`);
+        if (c.template === 'inventory_tray') assert.ok(expected >= 1.999, `${scenario}: tray floor is thinner than 2 mm`);
         floorChecks++;
       }
     }
@@ -199,7 +196,7 @@ async function lidChecks(c: HolderConfig, scenario: string) {
 }
 
 try {
-  const templates = ['desktop_dock', 'inventory_tray', 'modular_rail', 'grid_organizer', 'travel_case'] as const;
+  const templates = ['desktop_dock', 'inventory_tray'] as const;
   for (const template of templates) for (const size of [1.5, 2.7, 4]) {
     const scenario = `labels/${template}/${size}`;
     if (active(scenario)) await projectChecks(config(template, size), scenario);
@@ -229,7 +226,7 @@ try {
       delete (legacy as Partial<HolderConfig>).labelSize;
       assert.deepEqual(buildProject(legacy), buildProject(c));
     }
-    probes.push({ name: 'legacy-default', defaultMm: 2.7, allFiveProjectSourcesAndPlacementsIdentical: true });
+    probes.push({ name: 'legacy-default', defaultMm: 2.7, allTemplateProjectSourcesAndPlacementsIdentical: true });
   }
   assert.ok(results.length || probes.length, 'No matching scenarios');
   await mkdir('artifacts', { recursive: true });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { defaultConfig, parseConfig, serializeConfig } from '../src/config';
 import { buildProject, inventoryTrayLayout, trayStackGap } from '../src/geometry';
-import { readDraft, readProjects, saveProject, writeDraft } from '../src/projects';
+import { createMemoryStorage, createProject, duplicateProject, getProject } from '../src/projects';
 import { TRAY_SLIDE_DIRECTIONS } from '../src/tray-slide';
 
 describe('closed lids at the stacking plane', () => {
@@ -29,10 +29,10 @@ describe('closed lids at the stacking plane', () => {
         expect(lid.position[2] + lid.explode[2]).toBe(0);
       } else expect(lid.position[2] - 2.4).toBeCloseTo(t.height + trayStackGap(retention));
       expect(parseConfig(serializeConfig(c))).toEqual(c);
-      const data = new Map<string, string>();
-      const store = { getItem: (k: string) => data.get(k) ?? null, setItem: (k: string, v: string) => { data.set(k, v); } };
-      writeDraft(store, c); saveProject(store, c, style);
-      expect(readDraft(store)?.config).toEqual(c); expect(readProjects(store)[0].config).toEqual(c);
+      const store = createMemoryStorage();
+      const original = createProject(store, { config: c, name: style });
+      expect(getProject(store, original.id)?.config).toEqual(c);
+      expect(getProject(store, duplicateProject(store, original.id).id)?.config).toEqual(c);
       c.options.tray.footprint = { width: t.width, depth: t.depth };
       const slots = c.slots; c.slots = c.slots.slice(0, 1);
       expect(buildProject(c).parts[1]).toEqual(lid);

@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createSlot, defaultConfig, KEY_TYPES, moveSlot, parseConfig, serializeConfig, validateConfig } from '../src/config';
-import { fitOffsets, formatFitOffset } from '../src/fit-options';
-import { DRAFT_KEY, PROJECTS_KEY, readDraft, readProjects, saveProject, writeDraft } from '../src/projects';
+import { createMemoryStorage, createProject, getProject, LEGACY_KEYS, listProjects, migrateLegacyStorage, updateProjectConfig } from '../src/projects';
 
 function sampleConfig() {
   const config = defaultConfig();
@@ -47,7 +46,7 @@ describe('portable configurations', () => {
   });
   it.each([1.5, 2.7, 3.2, 4])('round trips key-label size %s across every organizer and preserves disabled-label preferences', labelSize => {
     const c = sampleConfig(); c.labelSize = labelSize;
-    for (const template of ['desktop_dock', 'modular_rail', 'inventory_tray', 'grid_organizer', 'travel_case'] as const) {
+    for (const template of ['inventory_tray', 'desktop_dock'] as const) {
       c.template = template;
       for (const labels of [false, true]) {
         c.labels = labels;
@@ -83,14 +82,12 @@ describe('portable configurations', () => {
     old.options.tray.margin = 17;
     for (const [group, fields] of [
       ['dock', ['rowSpacing', 'edgeMargin', 'depthMargin']],
-      ['tray', ['rowSpacing', 'height']], ['rail', ['endMargin']], ['grid', ['extraHeight']],
+      ['tray', ['height']],
     ] as const) for (const field of fields) delete old.options[group][field];
     const parsed = validateConfig(old);
     expect(parsed.version).toBe(1);
     expect(parsed.options.dock).toMatchObject({ rowSpacing: 45, edgeMargin: 18, depthMargin: 22.5 });
-    expect(parsed.options.tray).toMatchObject({ rowSpacing: 100, height: 8.6, margin: 17 });
-    expect(parsed.options.rail.endMargin).toBe(5);
-    expect(parsed.options.grid.extraHeight).toBe(0);
+    expect(parsed.options.tray).toMatchObject({ height: 8.6, margin: 17 });
     expect(parseConfig(serializeConfig(parsed))).toEqual(parsed);
   });
   it('adds tray feature defaults to legacy projects while preserving saved settings', () => {
@@ -110,32 +107,20 @@ describe('portable configurations', () => {
     expect(parseConfig(serializeConfig(parsed))).toEqual(parsed);
     expect(defaultConfig().options.tray).toMatchObject({ retention: true, connection: 'none', sideText: '' });
   });
-  it.each(['inventory_tray', 'travel_case'] as const)('defaults legacy row gap while preserving the saved %s row pitch', template => {
+  it('defaults a missing legacy row gap and drops the retired travel-case row pitch', () => {
     const old = JSON.parse(JSON.stringify(sampleConfig()));
-    old.template = template;
     old.options.tray.rowSpacing = 92;
     delete old.options.tray.rowGap;
     const parsed = validateConfig(old);
-    expect(parsed.options.tray).toMatchObject({ rowGap: 4, rowSpacing: 92 });
-    expect(parsed.template).toBe(template);
+    expect(parsed.options.tray.rowGap).toBe(4);
+    expect(parsed.options.tray).not.toHaveProperty('rowSpacing');
     expect(parseConfig(serializeConfig(parsed))).toEqual(parsed);
-  });
-  it('defaults both row gap and historical row pitch when importing an older tray', () => {
-    const old = JSON.parse(JSON.stringify(sampleConfig()));
-    old.options.tray.margin = 17;
-    delete old.options.tray.rowGap;
-    delete old.options.tray.rowSpacing;
-    expect(validateConfig(old).options.tray).toMatchObject({ rowGap: 4, rowSpacing: 100 });
     expect(defaultConfig().options.tray).toMatchObject({ rowGap: 4 });
   });
-  it.each([2, 4, 4.5, 40])('round trips explicit tray row gap %s independently of travel-case pitch', rowGap => {
+  it.each([2, 4, 4.5, 40])('round trips explicit tray row gap %s', rowGap => {
     const c = sampleConfig();
-    c.template = 'inventory_tray';
-    Object.assign(c.options.tray, { rowGap, rowSpacing: 90 });
-    const parsed = parseConfig(serializeConfig(c));
-    expect(parsed.options.tray).toMatchObject({ rowGap, rowSpacing: 90 });
-    parsed.template = 'travel_case';
-    expect(parseConfig(serializeConfig(parsed)).options.tray).toEqual(parsed.options.tray);
+    c.options.tray.rowGap = rowGap;
+    expect(parseConfig(serializeConfig(c)).options.tray).toEqual(c.options.tray);
   });
   it('rejects malformed tray row gap instead of treating it as a default', () => {
     for (const rowGap of [null, false, true, NaN, Infinity, -Infinity, '', '4', [], {}]) {
@@ -191,12 +176,12 @@ describe('portable configurations', () => {
       expect(parseConfig(serializeConfig(c)).options.tray).toMatchObject({ sideText });
     }
   });
-  it('defaults missing tray-lid fields without changing existing tray or case settings', () => {
+  it('defaults missing tray-lid fields without changing existing tray or dock settings', () => {
     const old = JSON.parse(JSON.stringify(sampleConfig()));
     old.template = 'inventory_tray';
     old.options.tray.connection = 'snap_fit';
     old.options.tray.sideText = 'Existing tray';
-    old.options.case.title = 'Separate case';
+    old.options.dock.title = 'Separate dock';
     delete old.options.tray.lid; delete old.options.tray.lidText; delete old.options.tray.lidTextSize;
     expect(validateConfig(old).options).toEqual({ ...old.options, tray: { ...old.options.tray, lid: false, lidText: '', lidTextSize: 6 } });
     expect(defaultConfig().options.tray).toMatchObject({ lid: false, lidText: '', lidTextSize: 6 });
@@ -250,12 +235,12 @@ describe('portable configurations', () => {
     const c = sampleConfig(); Object.assign(c.options.tray, { connection: 'none', stackable: true, locking: true, lid: true });
     expect(validateConfig(c).options.tray.connection).toBe('none');
   });
-  it.each([false, true])('round trips tray lid=%s and quoted Unicode text independently of the travel case', lid => {
+  it.each([false, true])('round trips tray lid=%s and quoted Unicode text independently of the dock title', lid => {
     const c = sampleConfig(); c.template = 'inventory_tray';
     Object.assign(c.options.tray, { lid, lidText: 'Caf\u00e9 "\u03a9" \\ \u041a\u043b\u044e\u0447\u0438', lidTextSize: 8.5 });
-    c.options.case.title = 'Travel lid';
+    c.options.dock.title = 'Dock title';
     expect(parseConfig(serializeConfig(c))).toEqual(c);
-    c.template = 'travel_case';
+    c.template = 'desktop_dock';
     expect(parseConfig(serializeConfig(c))).toEqual(c);
   });
   it('accepts blank and maximum-length tray lid text', () => {
@@ -273,7 +258,7 @@ describe('portable configurations', () => {
     const old = JSON.parse(JSON.stringify(sampleConfig()));
     old.template = 'inventory_tray'; old.labelSize = 4;
     Object.assign(old.options.tray, { lid: true, lidText: 'Existing lid', rowGap: 2, connection: 'snap_fit' });
-    old.options.case.title = 'Separate travel lid';
+    old.options.dock.title = 'Separate dock';
     delete old.options.tray.lidTextSize;
     expect(validateConfig(old)).toEqual({ ...old, options: { ...old.options, tray: { ...old.options.tray, lidTextSize: 6 } } });
   });
@@ -291,82 +276,78 @@ describe('portable configurations', () => {
       expect(() => validateConfig(c)).toThrow('Tray lid text size');
     }
   });
-  it('preserves lid preferences in named local projects and atomic drafts even when the lid is disabled', () => {
-    const map = new Map<string, string>();
-    const storage = { getItem: (key: string) => map.get(key) ?? null, setItem: (key: string, value: string) => { map.set(key, value); } };
+  it('preserves lid preferences in local projects even when the lid is disabled', () => {
+    const storage = createMemoryStorage();
     const c = sampleConfig(); c.template = 'inventory_tray';
     Object.assign(c.options.tray, { lid: true, lidText: 'Spare "\u041a\u043b\u044e\u0447\u0438"', lidTextSize: 9.5 });
-    const saved = saveProject(storage, c, 'Tray');
+    const saved = createProject(storage, { config: c, name: 'Tray' });
     c.options.tray.lid = false;
-    saveProject(storage, c, saved.name, saved.id);
-    writeDraft(storage, c, saved.id);
-    expect(readProjects(storage)[0].config).toEqual(c);
-    expect(readDraft(storage)).toMatchObject({ projectId: saved.id, config: c });
-    expect(readDraft(storage)?.config.options.tray.lidText).toBe('Spare "\u041a\u043b\u044e\u0447\u0438"');
-    expect(readDraft(storage)?.config.options.tray.lidTextSize).toBe(9.5);
+    updateProjectConfig(storage, saved.id, c);
+    const stored = getProject(storage, saved.id);
+    expect(stored?.config).toEqual(c);
+    expect(stored?.config.options.tray.lidText).toBe('Spare "\u041a\u043b\u044e\u0447\u0438"');
+    expect(stored?.config.options.tray.lidTextSize).toBe(9.5);
+    expect(listProjects(storage).projects.map(p => p.config)).toEqual([c]);
   });
   it('migrates pre-size local projects and owned drafts without changing their saved records', () => {
-    const map = new Map<string, string>();
-    const storage = { getItem: (key: string) => map.get(key) ?? null, setItem: (key: string, value: string) => { map.set(key, value); } };
+    const storage = createMemoryStorage();
     const old = JSON.parse(JSON.stringify(sampleConfig()));
     old.template = 'inventory_tray'; old.options.tray.lid = true; old.options.tray.lidText = 'Saved lid';
     delete old.options.tray.lidTextSize;
     const project = { id: 'saved-tray', name: 'Tray', createdAt: '2026-09-21T00:00:00Z', updatedAt: '2026-09-21T00:00:00Z', config: old };
     const projectRaw = JSON.stringify({ version: 1, projects: [project] });
     const draftRaw = JSON.stringify({ version: 1, config: old, projectId: project.id });
-    storage.setItem(PROJECTS_KEY, projectRaw); storage.setItem(DRAFT_KEY, draftRaw);
+    storage.setItem(LEGACY_KEYS.projects, projectRaw); storage.setItem(LEGACY_KEYS.draft, draftRaw);
     const expected = validateConfig(old);
-    expect(readProjects(storage)[0]).toEqual({ ...project, config: expected });
-    expect(readDraft(storage)).toEqual({ version: 1, config: expected, projectId: project.id });
+    const report = migrateLegacyStorage(storage, new Date('2026-09-22T00:00:00Z'));
+    expect(report.problems).toEqual([]);
+    expect(report.lastProjectId).toBe(project.id);
+    expect(getProject(storage, 'saved-tray')).toMatchObject({ name: 'Tray', createdAt: '2026-09-21T00:00:00.000Z', updatedAt: '2026-09-21T00:00:00.000Z' });
+    expect(getProject(storage, 'saved-tray')?.config).toEqual(expected);
+    // The identical owned draft binds to the project instead of creating a second one.
+    expect(listProjects(storage).projects.map(p => p.id)).toEqual(['saved-tray']);
     expect(expected.options.tray.lidTextSize).toBe(6);
-    expect(storage.getItem(PROJECTS_KEY)).toBe(projectRaw);
-    expect(storage.getItem(DRAFT_KEY)).toBe(draftRaw);
-    saveProject(storage, expected, project.name, project.id); writeDraft(storage, expected, project.id);
-    expect(readProjects(storage)[0].config).toEqual(expected);
-    expect(readDraft(storage)?.config).toEqual(expected);
+    expect(storage.getItem(LEGACY_KEYS.projects)).toBe(projectRaw);
+    expect(storage.getItem(LEGACY_KEYS.draft)).toBe(draftRaw);
+    updateProjectConfig(storage, project.id, expected);
+    expect(getProject(storage, 'saved-tray')?.config).toEqual(expected);
+    expect(migrateLegacyStorage(storage).ran).toBe(false);
+    expect(storage.getItem(LEGACY_KEYS.projects)).toBe(projectRaw);
+    expect(storage.getItem(LEGACY_KEYS.draft)).toBe(draftRaw);
   });
-  it('migrates older projects with default fit-test options and round trips separate test settings', () => {
+  it.each(['modular_rail', 'grid_organizer', 'travel_case', 'key_fit_tester', 'interface_tests'])('opens a saved %s project as an inventory tray with its keys and settings', template => {
+    const current = sampleConfig();
+    current.slots[2].label = 'Backup'; current.slots[3].occupied = false;
+    current.options.tray.lid = true; current.options.dock.title = 'Saved dock';
+    const old = JSON.parse(JSON.stringify(current));
+    old.template = template;
+    Object.assign(old.options, {
+      rail: { mountingHoles: false, endMargin: 12 }, grid: { mode: 'flat', extraHeight: 4 }, case: { headroom: 3, title: 'Case' },
+      tester: { profile: 'AN', startOffset: -0.3, step: 0.2, samples: 5 }, interfaceTests: { kind: 'lid' },
+    });
+    const migrated = validateConfig(old);
+    expect(migrated).toEqual(current);
+    expect(parseConfig(serializeConfig(migrated))).toEqual(migrated);
+  });
+  it('keeps the local project list readable when it contains a retired organizer type', () => {
+    const storage = createMemoryStorage();
     const old = JSON.parse(JSON.stringify(sampleConfig()));
-    delete old.options.tester; delete old.options.interfaceTests;
-    const upgraded = validateConfig(old);
-    expect(upgraded.options.tester).toEqual({ profile: 'C', startOffset: -0.1, step: 0.1, samples: 3 });
-    expect(upgraded.options.interfaceTests).toEqual({ kind: 'all' });
-    for (const template of ['key_fit_tester', 'interface_tests'] as const) {
-      upgraded.template = template;
-      upgraded.options.tester = { profile: 'AN', startOffset: -0.3, step: 0.2, samples: 5 };
-      upgraded.options.interfaceTests.kind = 'lid';
-      expect(parseConfig(serializeConfig(upgraded))).toEqual(upgraded);
-      expect(upgraded.slots).toEqual(old.slots);
+    old.template = 'travel_case'; old.options.case = { headroom: 0, title: 'SECURITY KEYS' };
+    storage.setItem(LEGACY_KEYS.projects, JSON.stringify({ version: 1, projects: [{ id: 'old-case', name: 'Case', createdAt: '2026-09-21T00:00:00Z', updatedAt: '2026-09-21T00:00:00Z', config: old }] }));
+    expect(migrateLegacyStorage(storage, new Date('2026-09-22T00:00:00Z')).problems).toEqual([]);
+    expect(listProjects(storage).projects[0].config.template).toBe('inventory_tray');
+    const saved = createProject(storage, { config: sampleConfig(), name: 'New tray' }, new Date('2026-09-23T00:00:00Z'));
+    expect(listProjects(storage).projects.map(p => p.id)).toEqual([saved.id, 'old-case']);
+  });
+  it('rejects unknown organizer types instead of guessing a replacement', () => {
+    for (const template of ['wall_mount', '', null, 42]) {
+      const c = sampleConfig() as unknown as Record<string, unknown>; c.template = template;
+      expect(() => validateConfig(c)).toThrow('Template');
     }
-  });
-  it.each(['all', 'rail', 'lid', 'grid', 'tray_snap'] as const)('round trips the %s mechanical fit-test selection', kind => {
-    const c = sampleConfig(); c.template = 'interface_tests'; c.options.interfaceTests.kind = kind;
-    c.options.tray.connection = 'snap_fit';
-    expect(parseConfig(serializeConfig(c))).toEqual(c);
-    expect(parseConfig(serializeConfig(c)).options.tray).toMatchObject({ connection: 'snap_fit', lid: false });
-  });
-  it('rejects invalid tester ranges and profiles before replacing a saved project', () => {
-    for (const [field, value] of [['samples', 4], ['samples', '3'], ['startOffset', -0.31], ['step', 0], ['step', Infinity], ['profile', 'CI']]) {
-      const c = sampleConfig();
-      (c.options.tester as unknown as Record<string, unknown>)[field] = value;
-      expect(() => validateConfig(c)).toThrow();
-    }
-    const c = sampleConfig();
-    (c.options.interfaceTests as unknown as Record<string, unknown>).kind = 'socket';
-    expect(() => validateConfig(c)).toThrow('Mechanical test');
-  });
-  it('keeps imported fractional tester offsets identical in the menu and printable labels', () => {
-    const c = sampleConfig();
-    c.options.tester = { profile: 'C', startOffset: -0.125, step: 0.075, samples: 3 };
-    const offsets = fitOffsets(parseConfig(serializeConfig(c)).options.tester);
-    expect(offsets).toEqual([-0.125, -0.05, 0.025]);
-    expect(offsets.map(formatFitOffset)).toEqual(['-0.125', '-0.05', '+0.025']);
-    expect(fitOffsets({ profile: 'C', startOffset: -0.1, step: 0.1, samples: 3 }).map(formatFitOffset)).toEqual(['-0.10', '0.00', '+0.10']);
   });
   it.each([
     ['dock', 'rowSpacing', 18, 70], ['dock', 'edgeMargin', 12, 40], ['dock', 'depthMargin', 18, 45],
-    ['tray', 'rowSpacing', 66, 110], ['tray', 'rowGap', 2, 40], ['tray', 'height', 8.6, 20],
-    ['rail', 'endMargin', 5, 30], ['grid', 'extraHeight', 0, 15],
+    ['tray', 'rowGap', 2, 40], ['tray', 'height', 8.6, 20],
   ] as const)('validates %s.%s bounds without accepting malformed values', (group, field, min, max) => {
     const c = sampleConfig();
     const options = c.options as unknown as Record<string, Record<string, unknown>>;

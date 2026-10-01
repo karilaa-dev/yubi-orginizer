@@ -1,27 +1,27 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { strFromU8, unzipSync } from 'fflate';
 import { defaultConfig, parseConfig, serializeConfig } from '../src/config';
-import { buildPackage, trayConnectionInstructions, TRAY_SNAP_INSTRUCTIONS, TRAY_H20_INSTRUCTIONS, type DownloadReadyDetail } from '../src/export';
-import { buildProject } from '../src/geometry';
+import { buildPackage, DOWNLOAD_READY_EVENT, trayConnectionInstructions, TRAY_SNAP_INSTRUCTIONS, TRAY_H20_INSTRUCTIONS, type DownloadReadyDetail } from '../src/export';
+import { buildProject, buildTrayH20Test, buildTraySnapTest } from '../src/geometry';
 import type { ProjectGeometry } from '../src/types';
 
 function fixture() {
   const config = defaultConfig();
-  config.template = 'modular_rail';
+  config.template = 'inventory_tray';
   config.slots[0].occupied = false;
   config.slots[1].label = 'ΩЖ "key"';
   config.slots.push({ ...config.slots[1], id: 'duplicate-slot' });
   const project: ProjectGeometry = {
     parts: [
-      { id: 'rail', name: 'Rail base', scad: 'cube([20,30,3]);\n', position: [0, 0, 0], rotation: [0, 0, 0], explode: [0, 0, 0], color: '#36566a' },
-      { id: 'cartridge-1', name: 'Cartridge 1', scad: 'difference(){cube(10);cylinder(h=11,r=2);}\n', position: [20, 0, 3], rotation: [0, 0, 0], explode: [0, 0, 10], color: '#87aeb7' },
+      { id: 'tray', name: 'Inventory tray', scad: 'cube([20,30,3]);\n', position: [0, 0, 0], rotation: [0, 0, 0], explode: [0, 0, 0], color: '#36566a' },
+      { id: 'tray-lid', name: 'Tray lid', scad: 'difference(){cube(10);cylinder(h=11,r=2);}\n', position: [20, 0, 3], rotation: [0, 0, 0], explode: [0, 0, 10], color: '#87aeb7' },
     ],
-    keys: [{ slotId: config.slots[1].id, type: 'C', position: [20, 0, 10], rotation: [Math.PI / 2, 0, 0], partId: 'cartridge-1' }],
+    keys: [{ slotId: config.slots[1].id, type: 'C', position: [20, 0, 10], rotation: [Math.PI / 2, 0, 0], partId: 'tray' }],
     dimensions: [40, 30, 13],
   };
   const meshes = new Map<string, ArrayBuffer>([
-    ['rail', new Uint8Array([0, 1, 2, 128, 255]).buffer],
-    ['cartridge-1', new Uint8Array([3, 5, 8, 13]).buffer],
+    ['tray', new Uint8Array([0, 1, 2, 128, 255]).buffer],
+    ['tray-lid', new Uint8Array([3, 5, 8, 13]).buffer],
     // Unused cached/reference data must not leak into the printable package.
     ['C-body', new Uint8Array([99, 99, 99]).buffer],
   ]);
@@ -33,21 +33,30 @@ describe('portable package contents', () => {
     const { config, project, meshes } = fixture();
     const files = unzipSync(buildPackage(config, project, meshes));
     expect(Object.keys(files).sort()).toEqual([
-      'READ ME.txt', 'project.keyform.json', 'scad/cartridge-1.scad', 'scad/rail.scad', 'stl/cartridge-1.stl', 'stl/rail.stl',
+      'READ ME.txt', 'project.yubi-orginizer.json', 'scad/tray-lid.scad', 'scad/tray.scad', 'stl/tray-lid.stl', 'stl/tray.stl',
     ]);
     for (const part of project.parts) {
       expect(files[`stl/${part.id}.stl`]).toEqual(new Uint8Array(meshes.get(part.id)!));
       expect(strFromU8(files[`scad/${part.id}.scad`])).toBe(part.scad);
     }
-    expect(strFromU8(files['project.keyform.json'])).toBe(serializeConfig(config));
+    expect(strFromU8(files['project.yubi-orginizer.json'])).toBe(serializeConfig(config));
     expect(strFromU8(files['READ ME.txt'])).toContain('Units: millimeters. Import STL files at 100% scale.');
-    expect(strFromU8(files['READ ME.txt'])).toContain('rail.stl: Rail base');
+    expect(strFromU8(files['READ ME.txt'])).toContain('tray.stl: Inventory tray');
+    expect(strFromU8(files['READ ME.txt'])).not.toMatch(/Gridfinity|travel case|cartridge/i);
+  });
+
+  it('notes the desktop dock fit caveat only in dock packages', () => {
+    const { config, project, meshes } = fixture();
+    const note = 'Desktop dock socket fit is still being refined.';
+    expect(strFromU8(unzipSync(buildPackage(config, project, meshes))['READ ME.txt'])).not.toContain(note);
+    config.template = 'desktop_dock';
+    expect(strFromU8(unzipSync(buildPackage(config, project, meshes))['READ ME.txt'])).toContain(note);
   });
 
   it('round trips reserved and duplicate slots without exporting reference assets', () => {
     const { config, project, meshes } = fixture();
     const files = unzipSync(buildPackage(config, project, meshes));
-    const recovered = parseConfig(strFromU8(files['project.keyform.json']));
+    const recovered = parseConfig(strFromU8(files['project.yubi-orginizer.json']));
     expect(recovered).toEqual(config);
     expect(recovered.slots[0].occupied).toBe(false);
     expect(recovered.slots.at(-1)?.id).toBe('duplicate-slot');
@@ -57,8 +66,8 @@ describe('portable package contents', () => {
 
   it('rejects an incomplete multipart model before returning an archive', () => {
     const { config, project, meshes } = fixture();
-    meshes.delete('cartridge-1');
-    expect(() => buildPackage(config, project, meshes)).toThrow('Cartridge 1 model is not ready');
+    meshes.delete('tray-lid');
+    expect(() => buildPackage(config, project, meshes)).toThrow('Tray lid model is not ready');
   });
 
   it('builds deterministic archives without changing source files or preview transforms', () => {
@@ -76,12 +85,12 @@ describe('portable package contents', () => {
     const { config, project, meshes } = fixture();
     const files = unzipSync(buildPackage(config, project, meshes, true));
     expect(strFromU8(files['READ ME.txt'])).toContain('Mechanical fit-test pieces');
-    expect(parseConfig(strFromU8(files['project.keyform.json']))).toEqual(config);
+    expect(parseConfig(strFromU8(files['project.yubi-orginizer.json']))).toEqual(config);
   });
 
-  it('includes both tray lock instructions in combined mechanical tests', () => {
-    const config = defaultConfig(); config.template = 'interface_tests';
-    const project = buildProject(config);
+  it('includes both tray lock instructions in combined developer sample packages', () => {
+    const config = defaultConfig();
+    const project: ProjectGeometry = { parts: [...buildTraySnapTest().parts, ...buildTrayH20Test().parts], keys: [], dimensions: [0, 0, 0] };
     const meshes = new Map(project.parts.map(p => [p.id, new Uint8Array([1, 2, 3]).buffer]));
     const instructions = strFromU8(unzipSync(buildPackage(config, project, meshes, true))['READ ME.txt']);
     expect(instructions).toContain(TRAY_SNAP_INSTRUCTIONS);
@@ -104,6 +113,10 @@ describe('portable package contents', () => {
     expect(instructions).not.toContain('SLIDE LOCK');
     expect(instructions).toContain('Four solid frame-supported catches');
     expect(instructions).toContain('PLA or PLA Matte');
+    // Uses the Stacking card's name and points to the only way to add another snap-fit layer.
+    expect(instructions).toContain('SNAP-FIT (OLDER VERSION)');
+    expect(instructions).toContain('New matching layer');
+    expect(instructions).not.toMatch(/enclosure snap|shell width/i);
   });
 
   it('selects snap-fit sample instructions from exported parts independently of saved inventory settings', () => {
@@ -118,7 +131,7 @@ describe('portable package contents', () => {
 });
 
 describe('tray lock help and download instructions', () => {
-  it('provides solid catch instructions when Enclosure snap-fit is selected', () => {
+  it('provides solid catch instructions when the older Snap-fit connection is kept', () => {
     const config = defaultConfig(); config.template = 'inventory_tray'; config.options.tray.connection = 'snap_fit';
     expect(trayConnectionInstructions(config)).toEqual([TRAY_SNAP_INSTRUCTIONS]);
   });
@@ -129,10 +142,13 @@ describe('tray lock help and download instructions', () => {
     expect(trayConnectionInstructions(config)).toEqual([]);
   });
 
-  it.each(['rail', 'lid', 'grid', 'tray_snap', 'tray_h20', 'all'] as const)('selects instructions for the %s test independently of the inventory setting', kind => {
-    const config = defaultConfig(); config.template = 'interface_tests'; config.options.interfaceTests.kind = kind;
-    config.options.tray.connection = 'none';
-    expect(trayConnectionInstructions(config)).toEqual(kind === 'all' ? [TRAY_SNAP_INSTRUCTIONS, TRAY_H20_INSTRUCTIONS] : kind === 'tray_snap' ? [TRAY_SNAP_INSTRUCTIONS] : kind === 'tray_h20' ? [TRAY_H20_INSTRUCTIONS] : []);
+  it('provides slide-lock instructions for a slide-lock tray only', () => {
+    const config = defaultConfig(); config.options.tray.connection = 'h20_slide_v7';
+    expect(trayConnectionInstructions(config)).toEqual([TRAY_H20_INSTRUCTIONS]);
+    expect(TRAY_H20_INSTRUCTIONS).toContain('incompatible with Stackable and older Snap-fit parts');
+    expect(TRAY_H20_INSTRUCTIONS).not.toMatch(/enclosure/i);
+    config.template = 'desktop_dock';
+    expect(trayConnectionInstructions(config)).toEqual([]);
   });
 });
 
@@ -143,7 +159,7 @@ describe('recoverable browser downloads', () => {
     vi.resetModules();
     const target = new EventTarget();
     const events: DownloadReadyDetail[] = [];
-    target.addEventListener('keyform:download-ready', event => events.push((event as CustomEvent<DownloadReadyDetail>).detail));
+    target.addEventListener(DOWNLOAD_READY_EVENT, event => events.push((event as CustomEvent<DownloadReadyDetail>).detail));
     const links: { href: string; download: string; click: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn> }[] = [];
     vi.stubGlobal('window', target);
     vi.stubGlobal('document', {
@@ -210,7 +226,7 @@ describe('recoverable browser downloads', () => {
     downloadParts('stl', config, project, meshes);
     const archive = create.mock.calls[0][0] as Blob;
     const files = unzipSync(new Uint8Array(await archive.arrayBuffer()));
-    expect(Object.keys(files).sort()).toEqual(['PRINTING.txt', 'project.keyform.json', 'tray-lid.stl', 'tray.stl']);
+    expect(Object.keys(files).sort()).toEqual(['PRINTING.txt', 'project.yubi-orginizer.json', 'tray-lid.stl', 'tray.stl']);
     expect(strFromU8(files['PRINTING.txt'])).toContain(TRAY_SNAP_INSTRUCTIONS);
     downloadParts('stl', config, project, meshes, 'tray-lid');
     expect(events.at(-1)?.name).toBe('tray-lid.stl');

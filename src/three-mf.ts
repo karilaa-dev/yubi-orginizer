@@ -73,7 +73,7 @@ function indexMesh(part: PartSpec, stl: ArrayBuffer): IndexedMesh {
 
 /** A portable model plus Bambu/Orca process overrides; no printer, material,
  * nozzle, temperatures, speeds, or G-code are selected or embedded. */
-export function build3mf(project: ProjectGeometry, meshes: Map<string, ArrayBuffer>, options: { partId?: string } = {}): Uint8Array {
+export function build3mf(project: ProjectGeometry, meshes: Map<string, ArrayBuffer>, options: { partId?: string; title?: string } = {}): Uint8Array {
   const parts = options.partId ? project.parts.filter((part) => part.id === options.partId) : project.parts;
   if (!parts.length) throw new Error(options.partId ? 'The selected printable part does not exist.' : 'Add keys and generate a model before exporting.');
   const indexed = parts.map((part) => {
@@ -109,10 +109,11 @@ export function build3mf(project: ProjectGeometry, meshes: Map<string, ArrayBuff
     // This preserves the user's printer/material selection in the slicer.
     settings.push(`<object id="${id}"><metadata key="name" value="${xml(mesh.part.name)}"/><metadata key="sparse_infill_density" value="5%"/><metadata key="wall_generator" value="arachne"/><part id="${id}" subtype="normal_part"><metadata key="name" value="${xml(mesh.part.name)}"/></part></object>`);
   });
+  const title = options.title?.trim() || 'YubiKey organizer';
   const files = {
     '[Content_Types].xml': strToU8('<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/><Default Extension="config" ContentType="application/octet-stream"/></Types>'),
     '_rels/.rels': strToU8('<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>'),
-    '3D/3dmodel.model': strToU8(`<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><metadata name="Application">Keyform</metadata><metadata name="Title">YubiKey organizer</metadata><metadata name="Description">Printable parts with 5% infill and Arachne object overrides for Bambu Studio and OrcaSlicer. Choose your printer and filament in the slicer.</metadata><resources>${objects.join('')}</resources><build>${items.join('')}</build></model>`),
+    '3D/3dmodel.model': strToU8(`<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><metadata name="Application">yubi-orginizer</metadata><metadata name="Title">${xml(title)}</metadata><metadata name="Description">Printable parts with 5% infill and Arachne object overrides for Bambu Studio and OrcaSlicer. Choose your printer and filament in the slicer.</metadata><resources>${objects.join('')}</resources><build>${items.join('')}</build></model>`),
     'Metadata/project_settings.config': strToU8(JSON.stringify(THREE_MF_PRINT_SETTINGS, null, 2)),
     'Metadata/model_settings.config': strToU8(`<?xml version="1.0" encoding="UTF-8"?><config>${settings.join('')}</config>`),
   };

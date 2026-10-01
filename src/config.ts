@@ -9,22 +9,13 @@ export const KEY_CATALOG: Record<KeyType, { name: string; short: string; connect
   CK: { name: 'YubiKey 5C', short: '5C', connector: 'USB-C' },
   CI: { name: 'YubiKey 5Ci', short: '5Ci', connector: 'USB-C · Lightning' },
 };
-export const TEMPLATES: { id: TemplateId; name: string; description: string; icon: string }[] = [
-  { id: 'desktop_dock', name: 'Desktop dock', description: 'Upright sockets in a solid base', icon: 'dock' },
-  { id: 'modular_rail', name: 'Cartridge rail', description: 'Sliding, individual key holders', icon: 'rail' },
+export const TEMPLATES: { id: TemplateId; name: string; description: string; icon: string; warning?: string }[] = [
   { id: 'inventory_tray', name: 'Inventory tray', description: 'Flat pockets with finger access', icon: 'tray' },
-  { id: 'grid_organizer', name: 'Gridfinity organizer', description: 'Modular 2 × 2 storage tiles', icon: 'grid' },
-  { id: 'travel_case', name: 'Travel case', description: 'Removable insert and lift-off lid', icon: 'case' },
-  { id: 'key_fit_tester', name: 'Key fit tester', description: 'Compare USB socket fits before printing', icon: 'usb' },
-  { id: 'interface_tests', name: 'Mechanical fit tests', description: 'Rail, lid, tray lock, and Gridfinity tests', icon: 'ruler' },
+  { id: 'desktop_dock', name: 'Desktop dock', description: 'Upright sockets in a solid base', icon: 'dock', warning: 'Desktop dock fit is still being refined. Keys may sit too tight or too loose in their sockets, so print a small dock with one key before a full organizer.' },
 ];
-export const isTestTemplate = (template: TemplateId): boolean => template === 'key_fit_tester' || template === 'interface_tests';
-export const SOCKET_PROFILES = [
-  { id: 'A', name: 'USB-A', models: '5 NFC · Security Key NFC' },
-  { id: 'C', name: 'USB-C', models: '5C NFC · 5C · 5Ci · Security Key C NFC' },
-  { id: 'AN', name: 'USB-A Nano', models: '5 Nano' },
-  { id: 'CN', name: 'USB-C Nano', models: '5C Nano' },
-] as const;
+// Saved projects and imports from retired organizer types keep their keys and
+// open as inventory trays instead of making the whole project list unreadable.
+const RETIRED_TEMPLATES = ['modular_rail', 'grid_organizer', 'travel_case', 'key_fit_tester', 'interface_tests'];
 export const MAX_SLOTS = 48;
 export const STORAGE_KEY = 'yubikey-organizer.project.v1';
 export const DISPLAY_KEY = 'yubikey-organizer.display.v1';
@@ -33,15 +24,10 @@ export function createSlot(type: KeyType): Slot {
 }
 export function defaultConfig(): HolderConfig {
   return {
-    version: 1, template: 'desktop_dock', slots: KEY_TYPES.map(createSlot), labels: true, labelSize: 2.7,
+    version: 1, template: 'inventory_tray', slots: KEY_TYPES.map(createSlot), labels: true, labelSize: 2.7,
     options: {
       dock: { columns: 0, spacing: 26, rowSpacing: 45, edgeMargin: 18, depthMargin: 22.5, height: 13, title: 'KEY DOCK' },
-      rail: { mountingHoles: true, endMargin: 5 },
-      tray: { columns: 0, spacing: 27, rowSpacing: 76, rowGap: 4, margin: 5, height: 8.6, scoop: 'default', retention: true, connection: 'none', slideDirection: 'left', sideText: '', lid: false, lidStyle: 'regular', lidText: '', lidTextSize: 6, lidTextPercent: 100, lidTextRotation: 0, footprint: null },
-      grid: { mode: 'mixed', extraHeight: 0 },
-      case: { headroom: 0, title: 'SECURITY KEYS' },
-      tester: { profile: 'C', startOffset: -0.1, step: 0.1, samples: 3 },
-      interfaceTests: { kind: 'all' },
+      tray: { columns: 0, spacing: 27, rowGap: 4, margin: 5, height: 8.6, scoop: 'default', retention: true, connection: 'none', slideDirection: 'left', sideText: '', lid: false, lidStyle: 'regular', lidText: '', lidTextSize: 6, lidTextPercent: 100, lidTextRotation: 0, footprint: null },
     },
   };
 }
@@ -74,7 +60,6 @@ export function validateConfig(value: unknown): HolderConfig {
   if (c.version !== 1) throw new Error('This project version is not supported. Expected version 1.');
   const o = object(c.options, 'Options');
   const d = object(o.dock, 'Dock options');
-  const r = object(o.rail, 'Rail options');
   const t = object(o.tray, 'Tray options');
   const footprint = t.footprint == null ? null : object(t.footprint, 'Locked tray dimensions');
   const rotation = t.lidTextRotation === undefined ? undefined : number(t.lidTextRotation, 'Lid text rotation', 0, 270, true);
@@ -88,12 +73,7 @@ export function validateConfig(value: unknown): HolderConfig {
     : choice(t.connection, ['none', 'stackable', 'slide_lock', 'snap_fit', 'h20_slide_v7'], 'Tray connection');
   const connection = oldConnection === 'slide_lock' ? 'snap_fit' : oldConnection;
   if (t.lockStyle !== undefined) choice(t.lockStyle, ['button', 'side_clips', 'captive_button'], 'Tray lock mechanism');
-  const g = object(o.grid, 'Grid options');
-  const k = object(o.case, 'Case options');
-  const tester = o.tester === undefined ? { profile: 'C', startOffset: -0.1, step: 0.1, samples: 3 } : object(o.tester, 'Fit tester options');
-  const interfaces = o.interfaceTests === undefined ? { kind: 'all' } : object(o.interfaceTests, 'Mechanical test options');
-  const samples = number(tester.samples, 'Fit sample count', 3, 5, true);
-  if (samples !== 3 && samples !== 5) throw new Error('Choose three or five fit samples.');
+  const template = typeof c.template === 'string' && RETIRED_TEMPLATES.includes(c.template) ? 'inventory_tray' : c.template;
   if (!Array.isArray(c.slots) || c.slots.length > MAX_SLOTS) throw new Error(`A project may contain up to ${MAX_SLOTS} keys.`);
   const ids = new Set<string>();
   const slots = c.slots.map((v, i): Slot => {
@@ -104,7 +84,7 @@ export function validateConfig(value: unknown): HolderConfig {
   });
   return {
     version: 1,
-    template: choice(c.template, TEMPLATES.map(t => t.id), 'Template'), slots, labels: bool(c.labels, 'Labels'),
+    template: choice(template, TEMPLATES.map(t => t.id), 'Template'), slots, labels: bool(c.labels, 'Labels'),
     labelSize: number(c.labelSize === undefined ? 2.7 : c.labelSize, 'Key label size', 1.5, 4),
     options: {
       dock: {
@@ -114,10 +94,8 @@ export function validateConfig(value: unknown): HolderConfig {
         depthMargin: number(d.depthMargin === undefined ? 22.5 : d.depthMargin, 'Dock depth margin', 18, 45),
         height: number(d.height, 'Dock height', 11, 25), title: validateText(d.title, 'Dock title', 32),
       },
-      rail: { mountingHoles: bool(r.mountingHoles, 'Mounting holes'), endMargin: number(r.endMargin === undefined ? 5 : r.endMargin, 'Rail end margin', 5, 30) },
       tray: {
         columns: number(t.columns, 'Tray columns', 0, 6, true), spacing: number(t.spacing, 'Tray spacing', 24, 42),
-        rowSpacing: number(t.rowSpacing === undefined ? 66 + 2 * number(t.margin, 'Tray margin', 5, 20) : t.rowSpacing, 'Tray row spacing', 66, 110),
         rowGap: number(t.rowGap === undefined ? 4 : t.rowGap, 'Space between tray rows', 2, 40),
         margin: number(t.margin, 'Tray margin', 5, 20), height: number(t.height === undefined ? 8.6 : t.height, 'Tray height', 8.6, 20),
         scoop: choice(t.scoop, ['small', 'default', 'large'], 'Finger scoop'),
@@ -135,14 +113,6 @@ export function validateConfig(value: unknown): HolderConfig {
         ...(rotation !== undefined ? { lidTextRotation: rotation as 0 | 90 | 180 | 270 } : {}),
         footprint: footprint ? { width: number(footprint.width, 'Tray width', 20, 1000), depth: number(footprint.depth, 'Tray depth', 20, 6000) } : null,
       },
-      grid: { mode: choice(g.mode, ['mixed', 'upright', 'flat'], 'Grid storage mode'), extraHeight: number(g.extraHeight === undefined ? 0 : g.extraHeight, 'Grid extra height', 0, 15) },
-      case: { headroom: number(k.headroom, 'Case headroom', 0, 15), title: validateText(k.title, 'Lid title', 32) },
-      tester: {
-        profile: choice(tester.profile, ['A', 'C', 'AN', 'CN'], 'USB socket profile'),
-        startOffset: number(tester.startOffset, 'First fit offset', -0.3, 0.3),
-        step: number(tester.step, 'Fit offset step', 0.05, 0.2), samples,
-      },
-      interfaceTests: { kind: choice(interfaces.kind === 'tray_lock' || interfaces.kind === 'tray_clips' || interfaces.kind === 'tray_captive' ? 'tray_snap' : interfaces.kind, ['all', 'rail', 'lid', 'grid', 'tray_snap', 'tray_h20'], 'Mechanical test') },
     },
   };
 }

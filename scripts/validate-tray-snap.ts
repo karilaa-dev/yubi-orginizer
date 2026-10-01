@@ -15,10 +15,9 @@ await mkdir('artifacts', { recursive: true });
 
 const vite = await createServer({ configFile: false, logLevel: 'silent', optimizeDeps: { noDiscovery: true, include: [] }, server: { middlewareMode: true, hmr: false, ws: false }, appType: 'custom' });
 type Layout = { width: number; depth: number; requiredWidth: number; requiredDepth: number; height: number; scoopRadius: number; labelWidth: number; xy: number[][] };
-const { buildProject, buildFitTests, buildTraySnapTest, inventoryTrayLayout, trayStackPitch, keyLabelMetrics } = await vite.ssrLoadModule('/src/geometry/index.ts') as {
+const { buildProject, buildTraySnapTest, inventoryTrayLayout, trayStackPitch, keyLabelMetrics } = await vite.ssrLoadModule('/src/geometry/index.ts') as {
   buildProject(c: HolderConfig): ProjectGeometry;
   buildTraySnapTest(engagement: number): ProjectGeometry;
-  buildFitTests(kind: HolderConfig['options']['interfaceTests']['kind']): ProjectGeometry;
   inventoryTrayLayout(c: HolderConfig): Layout;
   trayStackPitch(h: number, retention: boolean): number;
   keyLabelMetrics(c: HolderConfig): { scale: number };

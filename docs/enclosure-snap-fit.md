@@ -6,7 +6,7 @@ The accepted design replaces isolated thin spring leaves with four **solid frame
 
 Each tray carries two 8 mm wide, 3 mm thick catch blocks on each opposing side. Their full bases are continuous with the frame. The top has an inner locating rim and a long perimeter channel between the catches. The lid and every tray underside have a corresponding deep perimeter channel and four recessed receivers. That channel separates the mating skirt from the central key deck, leaving room for the skirt to move outward during engagement. There are no cut-out spring leaves or separate latch components.
 
-Press layers vertically together. Open one edge progressively using the end notch; both catch faces have 45-degree ramps. The skirt is unloaded when seated. Matching outside dimensions and the same connection are required on every layer. Catches depend on footprint, not key count. The stored value remains `snap_fit`, displayed as **Enclosure snap-fit**.
+Press layers vertically together. Open one edge progressively using the end notch; both catch faces have 45-degree ramps. The skirt is unloaded when seated. Matching outside dimensions and the same connection are required on every layer. Catches depend on footprint, not key count. The stored value remains `snap_fit`; saved projects show it under Tray settings › Stacking as **Snap-fit (from an older version)**, and it is no longer offered for new trays.
 
 ## PLA / PLA Matte prototype dimensions
 
@@ -24,12 +24,12 @@ Press layers vertically together. Open one edge progressively using the end notc
 | Minimum solid web between cavities | 2 mm |
 | Minimum tray body height | 14.6 mm |
 | Lid height | 13 mm, including allowance for 0.35 mm engraving |
-| Minimum outer margin | 10 mm |
+| Minimum edge margin | 10 mm |
 | Minimum tray depth | 42 mm |
 
-Corner profiles share a common center so the channel roof stays at 45 degrees around the perimeter. Stations lie within the straight walls. The upper locating rim, lower receiver channel and mating lid use the same outlines. The key pocket layout and calibrated floors are preserved; perimeter size grows to accommodate the mechanism. Undersized locked footprints produce the existing size error instead of weakening the frame.
+Corner profiles share a common center so the channel roof stays at 45 degrees around the perimeter. Stations lie within the straight walls. The upper locating rim, lower receiver channel and mating lid use the same outlines. The key pocket layout and calibrated floors are preserved; perimeter size grows to accommodate the mechanism. An undersized fixed size produces the existing size error instead of weakening the frame.
 
-The default single-Nano example is 39 × 42 mm and 28.6 mm tall with lid (29.1 mm with key retention). The complete fit sample is 42 × 60 mm. STL and 3MF parts use their supplied base-down print orientation.
+The default single-Nano example is 39 × 42 mm and 28.6 mm tall with lid (29.1 mm with retention tabs). The complete developer fit sample (`npm run export:snap-sample`; not generated in the app) is 42 × 60 mm. STL and 3MF parts use their supplied base-down print orientation.
 
 ## Verification and limits
 

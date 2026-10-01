@@ -65,4 +65,15 @@ describe('3MF export', () => {
     expect(build3mf(input, meshes)).toEqual(build3mf(input, meshes));
     expect(input).toEqual(before);
   });
+  it('identifies yubi-orginizer and titles the model after the project, escaped', () => {
+    const input = project([part('a')]);
+    const meshes = new Map([['a', tetrahedron()]]);
+    const model = (options?: { title?: string }) => text(unzipSync(build3mf(input, meshes, options)), '3D/3dmodel.model');
+    expect(model()).toContain('<metadata name="Application">yubi-orginizer</metadata>');
+    expect(model()).toContain('<metadata name="Title">YubiKey organizer</metadata>');
+    expect(model({ title: '  ' })).toContain('<metadata name="Title">YubiKey organizer</metadata>');
+    expect(model({ title: 'Desk <A&B> "1"' })).toContain('<metadata name="Title">Desk &lt;A&amp;B&gt; &quot;1&quot;</metadata>');
+    expect(model({ title: '\u041a\u043b\u044e\u0447\u0456' })).toContain('<metadata name="Title">\u041a\u043b\u044e\u0447\u0456</metadata>');
+    expect(model()).not.toMatch(/keyform/i);
+  });
 });

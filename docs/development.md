@@ -25,7 +25,6 @@ written to `artifacts/`, which is created as needed and excluded from Git.
 ```sh
 npm run test:geometry -- --report=artifacts/geometry-validation.json
 node --import tsx scripts/validate-3mf.ts
-node --import tsx scripts/validate-fit-tools.ts
 node --import tsx scripts/validate-tray-snap.ts
 node --import tsx scripts/validate-tray-sizing.ts
 npm run validate:h20
@@ -34,7 +33,7 @@ npm run validate:h20
 Focused checks:
 
 ```sh
-npm run test:geometry -- --filter=travel_case --report=artifacts/case-validation.json
+npm run test:geometry -- --filter=inventory_tray --report=artifacts/tray-validation.json
 npm run test:geometry -- --stress --report=artifacts/geometry-stress-validation.json
 node --import tsx scripts/validate-reversible-ci.ts
 node --import tsx scripts/validate-size-controls.ts
@@ -96,6 +95,10 @@ names and worker files. Revalidate `index.html` and `sw.js`; hashed assets can
 use immutable caching. Opening `index.html` through `file://` is unsupported.
 
 Before releasing, test the production preview: generate a model, download it,
-reload offline, edit a previously unrendered design, and verify the update banner.
+reload offline, edit a previously unrendered design, and check updates: interact
+with an open tab, rebuild, then select **Help › Check for updates** (or switch to
+another tab and back after at least a minute). An **Update** button appears and
+nothing reloads. Then refresh: the page updates by itself. Without a check, an
+open tab only looks for updates every 15 minutes.
 Check keyboard and touch interaction. A successful build does not establish
 browser coverage or physical printing quality.

@@ -7,26 +7,29 @@ Reference keys are never included in printable files.
 3MF exports contain separate objects and per-object 5% infill / Arachne settings
 for Bambu Studio and OrcaSlicer. Open as a project and choose your printer and
 filament. Other readers may ignore slicer-specific settings. Inspect the slice
-before printing. STL and SCAD downloads include a project configuration.
+before printing. Multi-part STL and SCAD ZIPs include the project file.
+Downloaded files are named after the project.
 Desktop OpenSCAD needs Liberation Sans and Text Metrics for matching lettering.
 
 ## Inventory trays
 
-**Non-stackable** keeps the optional lift-off lid. **Stackable** adds locating
+**Standalone** keeps the optional lift-off lid. **Stackable** adds locating
 rims for trays that lift apart. **Slide-lock** adds the H20/V7 pins and guides,
-with matching underside receivers. A lid can be added independently. For stacked trays with different contents,
-lock the larger layout's width and depth before removing keys. Use identical
-outside dimensions and the same connection on every layer. Undersized locked
-footprints block exports until corrected; key pockets are never scaled.
+with matching underside receivers. A lid can be added independently. For stacked
+trays with different contents, use **New matching layer** in the project menu, or
+choose **Tray settings › Size › Fixed size** on the larger layout before removing
+keys. Use identical outside dimensions and the same connection on every layer.
+An undersized fixed size blocks exports until corrected; key pockets are never
+scaled.
 
-For [H20/V7 slide-lock](h20-slide-lock.md), first print the two-piece sample under
-Mechanical fit tests. Keep pins upward and print slide-lock lids with the flat inside face down. Start the upper
-layer 6 mm opposite the selected sliding direction, lower, then slide until
+For [H20/V7 slide-lock](h20-slide-lock.md), keep pins upward and print slide-lock
+lids with the flat inside face down. Start the upper
+layer 6 mm opposite the selected slide direction, lower, then slide until
 flush; reverse the motion before lifting. Match the direction on every layer.
-The small fit sample always slides left. Preserve the material/settings used for your reference fit and inspect
+Preserve the material/settings used for your reference fit and inspect
 the sloped receiver roofs with supports disabled.
 
-Choose **Lid design → Regular** for a 2.4 mm panel or **Minimal material** for a
+Choose **Lid › Style → Regular** for a 2.4 mm panel or **Minimal** for a
 closed 1.2 mm panel with exterior ribs. Both have the same key-facing height as
 a stacked tray. Slide-lock lids place their receiver housings above the panel;
 print them inside-face down. Minimal lift-off lids also print inside-face down,
@@ -44,24 +47,24 @@ the actual key before printing a larger batch.
 The connector tip sits over a deeper finger recess with 1 mm of clearance
 underneath, while a short ledge continues to support its root.
 
-Set **Outer margin** to 5 mm for the compact footprint; extra clearance is
+Set **Edge margin** to 5 mm for the compact footprint; extra clearance is
 reserved automatically on the two receiver edges. Larger selected margins and
-locked dimensions are preserved.
+fixed sizes are preserved.
 
 Saved projects using the [legacy enclosure joint](enclosure-snap-fit.md) retain four solid catches and a flexible
-mating skirt. Start with PLA / PLA Matte and the complete frame sample. Compare
-0.1, 0.2 and 0.3 mm engagement. Press vertically to close and lift one end
+mating skirt. Start with PLA / PLA Matte; the default engagement is 0.2 mm.
+Press vertically to close and lift one end
 progressively at its finger notch to open. Keep clearance channels unobstructed.
 Regenerate both mating parts when replacing any older connection.
 
-Key retention is separate: its flexible tabs hold keys in their pockets. PETG
+**Retention tabs** are separate: they flex to hold keys in their pockets. PETG
 is a useful starting material for those repeated-use tabs. Changing material can
 change the enclosure fit; test the complete assembly you intend to print.
 
 ## Calibration and limitations
 
-USB socket fit-test offsets apply per side in XY; zero uses the calibrated cutter
-without adjustment. Tester settings never change the organizer's default fit.
+Desktop dock socket fit is still being refined: keys may sit too tight or too
+loose, so print a small dock with one key before a full organizer.
 The 5Ci inventory relief is provisional and symmetric to allow either connector
 orientation; other organizers retain the original body contour.
 

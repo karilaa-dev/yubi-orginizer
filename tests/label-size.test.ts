@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { defaultConfig, KEY_TYPES } from '../src/config';
 import { buildProject, inventoryTrayLayout, inventoryTraySupports, keyDimensions, keyLabelMetrics } from '../src/geometry';
-import type { HolderConfig, TemplateId } from '../src/types';
+import type { HolderConfig } from '../src/types';
 
 function example(): HolderConfig {
   const config = defaultConfig();
@@ -20,7 +20,7 @@ describe('adjustable printed key labels', () => {
     expect(metrics.edgeOffset - metrics.halfHeight).toBeCloseTo(0.8);
   });
 
-  it.each(['desktop_dock', 'inventory_tray', 'modular_rail', 'grid_organizer', 'travel_case'] as const)('%s passes the ratio while preserving the default when omitted', (template) => {
+  it.each(['desktop_dock', 'inventory_tray'] as const)('%s passes the ratio while preserving the default when omitted', (template) => {
     const config = example(); config.template = template;
     config.labelSize = 2.7;
     const explicit = buildProject(config);
@@ -29,11 +29,7 @@ describe('adjustable printed key labels', () => {
     config.labelSize = 4;
     const project = buildProject(config);
     for (const part of project.parts) {
-      const index = template === 'desktop_dock' ? 7
-        : template === 'inventory_tray' && part.id === 'tray' ? 12
-          : template === 'modular_rail' && part.id.startsWith('cartridge-') ? 2
-            : template === 'grid_organizer' ? 7
-              : template === 'travel_case' && part.id === 'case-insert' ? 8 : undefined;
+      const index = template === 'desktop_dock' ? 7 : part.id === 'tray' ? 12 : undefined;
       if (index !== undefined) expect(args(part.scad)[index]).toBeCloseTo(4 / 2.7);
     }
   });
@@ -66,21 +62,11 @@ describe('adjustable printed key labels', () => {
     }
   });
 
-  it('keeps maximum text envelopes on fixed-pitch dock, rail and case material', () => {
+  it('keeps maximum text envelopes on fixed-pitch dock material', () => {
     const config = example(); config.labelSize = 4;
     const metrics = keyLabelMetrics(config);
     const maxUprightFront = 3.5 + metrics.edgeOffset + metrics.halfHeight;
     expect(18 - maxUprightFront - 3.5).toBeGreaterThan(0.8);
-    expect(11.5 - maxUprightFront).toBeGreaterThan(0.6);
-    const maxFlatFront = 45.6 / 2 + metrics.edgeOffset + metrics.halfHeight;
-    expect(66 - maxFlatFront - (45.6 / 2 + 6)).toBeGreaterThan(2);
-    expect(33 + 5 - maxFlatFront).toBeGreaterThan(2);
   });
 
-  it.each(['key_fit_tester', 'interface_tests'] satisfies TemplateId[])('%s keeps its fixed calibration markings', (template) => {
-    const config = example(); config.template = template; config.labelSize = 1.5;
-    const small = buildProject(config);
-    config.labelSize = 4;
-    expect(buildProject(config)).toEqual(small);
-  });
 });

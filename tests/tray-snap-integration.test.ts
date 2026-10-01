@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { defaultConfig, KEY_TYPES, parseConfig, serializeConfig } from '../src/config';
-import { buildFitTests, buildProject, inventoryTrayLayout, traySnapEnabled, trayStackGap } from '../src/geometry';
+import { buildProject, buildTraySnapTest, inventoryTrayLayout, traySnapEnabled, trayStackGap } from '../src/geometry';
 import { TRAY_SNAP } from '../src/geometry/tray-snap';
 
 function tray() {
@@ -51,9 +51,8 @@ describe('integral snap-fit tray integration', () => {
     expect(snap.height).toBeGreaterThanOrEqual(TRAY_SNAP.minimumHeight);
   });
   it('provides an independent two-part fit test without any keys or loose actuators', () => {
-    const p = buildFitTests('tray_snap');
+    const p = buildTraySnapTest();
     expect(p.keys).toEqual([]);
     expect(p.parts.map(p => p.id)).toEqual(['fit-tray-snap-lower', 'fit-tray-snap-upper']);
-    expect(new Set(buildFitTests('all').parts.map(p => p.id)).size).toBe(9);
   });
 });

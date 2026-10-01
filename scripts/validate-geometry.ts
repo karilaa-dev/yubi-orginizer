@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { createServer } from 'vite';
-import { defaultConfig, isTestTemplate, KEY_TYPES, TEMPLATES } from '../src/config';
+import { defaultConfig, KEY_TYPES, TEMPLATES } from '../src/config';
 import type { HolderConfig, PartSpec, ProjectGeometry, Vec3 } from '../src/types';
 import { renderScadInNode } from '../src/runtime/node-render';
 import { inspectPrintableMesh, type MeshInspection } from '../src/runtime/mesh-check';
@@ -16,7 +16,8 @@ const server = await createServer({
 });
 const geometry = await server.ssrLoadModule('/src/geometry/index.ts') as {
   buildProject(config: HolderConfig): ProjectGeometry;
-  buildFitTests(): PartSpec[] | ProjectGeometry;
+  buildTraySnapTest(): ProjectGeometry;
+  buildTrayH20Test(): ProjectGeometry;
 };
 await server.close();
 
@@ -94,7 +95,7 @@ async function checkParts(scenario: string, parts: PartSpec[], intersections = f
 }
 
 const started = performance.now();
-for (const template of TEMPLATES.filter((t) => !isTestTemplate(t.id))) {
+for (const template of TEMPLATES) {
   const all = defaultConfig();
   all.template = template.id;
   await checkParts(`${template.id}/all-six`, geometry.buildProject(all).parts, true);
@@ -110,24 +111,18 @@ for (const template of TEMPLATES.filter((t) => !isTestTemplate(t.id))) {
 }
 
 const labels = defaultConfig();
+labels.template = 'desktop_dock';
 labels.slots = [{ id: 'escaped', type: 'C', label: 'a"\\();$%ΩЖ', occupied: true }];
 labels.options.dock.title = '";cube(999); // ΩЖ';
 await checkParts('escaped-unicode-labels', geometry.buildProject(labels).parts);
 
-for (const mode of ['upright', 'flat'] as const) {
-  const config = defaultConfig();
-  config.template = 'grid_organizer';
-  config.options.grid.mode = mode;
-  await checkParts(`grid_organizer/${mode}`, geometry.buildProject(config).parts);
-}
-
-const fits = geometry.buildFitTests();
-await checkParts('fit-tests', Array.isArray(fits) ? fits : fits.parts, true);
+await checkParts('tray-snap-test', geometry.buildTraySnapTest().parts, true);
+await checkParts('tray-h20-test', geometry.buildTrayH20Test().parts, true);
 
 // Opt-in high-capacity regression run: the default suite already exercises all
-// templates, every individual key, repetitions, and both grid storage modes.
+// templates, every individual key, and repetitions.
 if (process.argv.includes('--stress')) {
-  for (const template of TEMPLATES.filter((t) => !isTestTemplate(t.id))) {
+  for (const template of TEMPLATES) {
     const config = defaultConfig();
     config.template = template.id;
     config.slots = Array.from({ length: 48 }, (_, i) => ({ id: `stress-${i}`, type: KEY_TYPES[i % KEY_TYPES.length], label: `${i + 1}`, occupied: true }));

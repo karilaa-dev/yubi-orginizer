@@ -1,7 +1,5 @@
 const paths: Record<string, string> = {
   rotate: '<path d="M20 9a8 8 0 1 0-1 9M20 3v6h-6"/>',
-  usb: '<rect x="6" y="3" width="12" height="11" rx="3"/><path d="M10 7h4M10 14v7m4-7v7M8 21h8"/>',
-  ruler: '<path d="m3 16 13-13 5 5L8 21zM7 12l2 2m2-6 2 2m2-6 2 2"/>',
   filament: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M20 12v8h-5M8 5l1.5 4M5 10l4 .7m-2 6 3-2m7 3-3-3m5-8-4 3"/>',
   search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1 1m12 12 1 1M5 19l1-1M18 6l1-1"/>',
@@ -21,9 +19,7 @@ const paths: Record<string, string> = {
   cube: '<path d="m12 2 9 5v10l-9 5-9-5V7zm0 10v10M3 7l9 5 9-5M8 4l9 5v5"/>',
   grid: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
   dock: '<path d="M3 15h18v6H3z"/><rect x="5" y="3" width="4" height="12" rx="1"/><rect x="15" y="6" width="4" height="9" rx="1"/>',
-  rail: '<path d="M2 17h20v4H2zM3 13h7v4H3zm11 0h7v4h-7zM5 4h3v9H5zm11 2h3v7h-3z"/>',
   tray: '<rect x="2" y="4" width="20" height="16" rx="3"/><rect x="5" y="7" width="4" height="10" rx="1"/><rect x="11" y="7" width="3" height="6" rx="1"/><rect x="16" y="7" width="3" height="10" rx="1"/>',
-  case: '<rect x="3" y="8" width="18" height="13" rx="3"/><path d="M8 8V4h8v4M3 13h18M10 13v3h4v-3"/>',
   reset: '<path d="M3 10a9 9 0 1 1 1.8 8M3 4v6h6"/>',
   eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
   eyeOff: '<path d="m3 3 18 18M10 5h2c6 0 10 7 10 7s-1.3 2.3-3.5 4.2M6.5 6.5C3.7 8.7 2 12 2 12s4 7 10 7c1.9 0 3.7-.7 5.2-1.8M10 10a3 3 0 0 0 4 4"/>',
@@ -35,12 +31,21 @@ const paths: Record<string, string> = {
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/>',
   expand: '<path d="M8 3H3v5m13-5h5v5M3 16v5h5m8 0h5v-5"/>',
   layers: '<path d="m12 3 10 5-10 5L2 8zm-10 9 10 5 10-5M2 16l10 5 10-5"/>',
+  more: '<circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none"/>',
+  edit: '<path d="M4 20h4L19 9a2.83 2.83 0 0 0-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>',
+  copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
+  undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
+  alert: '<path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4m0 4h.01"/>',
+  cloudOff: '<path d="m2 2 20 20"/><path d="M5.8 5.8A7 7 0 0 0 9 19h8.5a4.5 4.5 0 0 0 1.3-.2"/><path d="M21.5 16.5A4.5 4.5 0 0 0 17.5 10h-1.8A7 7 0 0 0 10 5.1"/>',
+  help: '<circle cx="12" cy="12" r="9"/><path d="M9.6 9.3a2.5 2.5 0 0 1 4.9.7c0 1.7-2.5 2.3-2.5 3.8M12 17h.01"/>',
+  sparkle: '<path d="M11 3.5 12.8 8a2 2 0 0 0 1.2 1.2l4.5 1.8-4.5 1.8a2 2 0 0 0-1.2 1.2L11 18.5 9.2 14A2 2 0 0 0 8 12.8L3.5 11 8 9.2A2 2 0 0 0 9.2 8z"/><path d="M19 3v4m-2-2h4M18 17v3m-1.5-1.5h3"/>',
 };
 export function icon(name: string, className = ''): string {
   return `<svg class="icon ${className}" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.cube}</svg>`;
 }
 export function keyIcon(type: string): string {
-  const ink = '#263238', gold = '#d4ae55', metal = '#adb9bc';
+  // The body colour is themable (--key-ink) so black keys stay visible on dark surfaces.
+  const ink = 'var(--key-ink,#263238)', gold = '#d4ae55', metal = '#adb9bc';
   const ring = (y: number, r = 2.7) => `<circle cy="${y}" r="${r}" fill="${gold}"/><circle cy="${y}" r="${r - 0.45}" fill="var(--surface,#fff)"/>`;
   let shape: string, transform: string;
   if (type === 'A' || type === 'C') {

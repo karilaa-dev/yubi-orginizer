@@ -1,6 +1,6 @@
 # Calibrated CAD profiles
 
-These files contain the body contours and USB-C socket modules used by Keyform.
+These files contain the body contours and USB-C socket modules used by yubi-orginizer.
 They originated in the supplied `YubiKey_Holder_Concepts_1_to_5_Package`.
 The required source was recovered from a self-contained Keyform SCAD export when
 the original package was no longer present. The geometry definitions are unchanged; only trailing blank lines were normalized.

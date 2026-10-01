@@ -88,29 +88,6 @@ module socket_cut(k,top) {
     }
   }
 }
-// Deliberate calibration samples only. Production organizers always use
-// socket_cut(). An exact zero bypasses reconstruction of the accepted cutter.
-module offset_socket_cut(k,top,fit_offset=0) {
-  if(abs(fit_offset)<0.000000001) socket_cut(k,top);
-  else translate([0,0,top-socket_d(k)]) {
-    if(k=="A"||k=="AN") {
-      profile=k=="A"?plug_A:plug_AN;
-      linear_extrude(socket_d(k)-0.20) offset(delta=fit_offset) polygon(profile);
-      translate([0,0,socket_d(k)-0.20]) hull() {
-        linear_extrude(0.01) offset(delta=fit_offset) polygon(profile);
-        translate([0,0,0.19]) linear_extrude(0.01) offset(delta=fit_offset+0.05) polygon(profile);
-      }
-    } else usb_c_socket_cutter(
-      w=(k=="CN"?8.290:8.300)+2*fit_offset,
-      t=(k=="CN"?2.500:2.560)+2*fit_offset,
-      depth=socket_d(k),r=0.35+fit_offset
-    );
-    translate([0,0,socket_d(k)-eps]) linear_extrude(0.15) {
-      if(k=="A"||k=="AN") offset(delta=fit_offset+0.05) polygon(k=="A"?plug_A:plug_AN);
-      else rr((k=="CN"?8.59:8.60)+2*fit_offset,(k=="CN"?2.80:2.86)+2*fit_offset,0.50+fit_offset);
-    }
-  }
-}
 module body_cut(k,top) {
   difference() {
     translate([0,-pocket_l(k)/2,top-pocket_d(k)])
@@ -147,6 +124,7 @@ module dock(ks,ls,xy,w,d,h,title="",label_scale=1) {
     for(i=[0:len(ks)-1]) label(ls[i],xy[i][0],xy[i][1]-upright_label_distance(ks[i],label_scale),h,20,2.55*label_scale);
   }
 }
+// Shared inventory-tray base: slab, calibrated pockets, finger scoops, labels.
 module tray(ks,ls,xy,w,d,h=8.6,scoop_r=5,label_width=23,label_scale=1) {
   union() {
     difference() {
@@ -301,122 +279,6 @@ module inventory_tray_lid(w,d,s="",text_size=6,groove=true,thickness=${TRAY_LID.
 }
 module inventory_tray_lid_percent(w,d,s="",percent=100,angle=0) {
   inventory_tray_lid(w,d,s,text_percent=percent,text_rotation=angle);
-}
-module rail_base(n,mounting=true,end_margin=5) {
-  w=n*26+2*end_margin;
-  difference() {
-    union() {
-      slab(w,36,3,3);
-      for(y=[-16,16]) translate([0,y,2.95]) slab(w-2,3,5.65,1);
-      // The foot is 28.4 wide in a 29mm channel; lips clear its top by 0.4.
-      for(y=[-13.9,13.9]) translate([0,y,7.4]) cube([w-5,3,2],center=true);
-      translate([-w/2+3,0,4.5]) cube([3,29,3],center=true);
-    }
-    if(mounting) for(x=[-w/2+7,w/2-7]) translate([x,0,-eps]) cylinder(d=3.3,h=3+2*eps);
-  }
-}
-module cartridge(k,s="",label_scale=1) {
-  union() {
-    difference() {
-      union() {
-        slab(25.6,28.4,3,1.4);
-        translate([0,0,2.9]) slab(23,23,10.7,1.5);
-      }
-      socket_cut(k,13.6);
-    }
-    label(s,0,-upright_label_distance(k,label_scale),13.6,20,2.0*label_scale);
-  }
-}
-// Gridfinity base mating dimensions: 42mm pitch, 0.5mm total gap.
-// 0.8mm chamfer + 1.8mm straight + 2.15mm chamfer; no stacking rim.
-function grid_rect_ring(w,l,r,z,x=0,y=0) = [for(c=[0:3],j=[0:12])
-  let(a=c*90+j*90/12, cx=x+(c==0||c==3?1:-1)*(w/2-r), cy=y+(c<2?1:-1)*(l/2-r))
-  [cx+r*cos(a),cy+r*sin(a),z]];
-function grid_ring(w,r,z,x=0,y=0) = grid_rect_ring(w,w,r,z,x,y);
-module grid_foot(cols,rows) {
-  ring_size=52;
-  faces=concat(
-    [[for(i=[ring_size-1:-1:0]) i]],
-    [[for(i=[0:ring_size-1]) 4*ring_size+i]],
-    [for(level=[0:3],i=[0:ring_size-1]) let(j=(i+1)%ring_size)
-      [level*ring_size+i,level*ring_size+j,(level+1)*ring_size+j,(level+1)*ring_size+i]]
-  );
-  for(i=[0:cols-1],j=[0:rows-1]) {
-    x=(i-(cols-1)/2)*42; y=(j-(rows-1)/2)*42;
-    // Global-coordinate rings and the bridge use identical corner samples.
-    // Extend only ABOVE the calibrated shoulder to join the bridge robustly.
-    pts=concat(grid_ring(35.6,0.8,0,x,y),grid_ring(37.2,1.6,0.8,x,y),grid_ring(37.2,1.6,2.6,x,y),grid_ring(41.5,3.75,4.75,x,y),grid_ring(41.5,3.75,4.85,x,y));
-    // OpenSCAD expects clockwise faces viewed from outside; reverse the rings.
-    polyhedron(pts,[for(face=faces) [for(v=[len(face)-1:-1:0]) face[v]]],convexity=4);
-  }
-}
-module grid_bridge(cols,rows,top) {
-  ring_size=52;
-  pts=concat(grid_rect_ring(cols*42-0.5,rows*42-0.5,3.75,4.75),grid_rect_ring(cols*42-0.5,rows*42-0.5,3.75,top));
-  faces=concat(
-    [[for(i=[ring_size-1:-1:0]) i]],
-    [[for(i=[0:ring_size-1]) ring_size+i]],
-    [for(i=[0:ring_size-1]) let(j=(i+1)%ring_size) [i,j,ring_size+j,ring_size+i]]
-  );
-  polyhedron(pts,[for(face=faces) [for(v=[len(face)-1:-1:0]) face[v]]],convexity=4);
-}
-module grid_tile(ks,ls,xy,cols,rows,flat=false,extra_height=0,label_scale=1) {
-  h=(flat?13:15)+extra_height;
-  union() {
-    difference() {
-      union() {
-        grid_foot(cols,rows);
-        grid_bridge(cols,rows,h);
-      }
-      for(i=[0:len(ks)-1]) translate([xy[i][0],xy[i][1],0]) {
-        if(flat) { body_cut(ks[i],h); scoop(ks[i],h); }
-        else socket_cut(ks[i],h);
-      }
-    }
-    for(i=[0:len(ks)-1]) label(ls[i],xy[i][0],xy[i][1]-(flat?flat_label_distance(ks[i],label_scale):upright_label_distance(ks[i],label_scale)),h,32,2.7*label_scale);
-  }
-}
-module case_base(w,d,h) {
-  difference() {
-    slab(w+8,d+8,h,5);
-    translate([0,0,2.4]) slab(w+0.5,d+0.5,h,3.25);
-    translate([0,-(d+8)/2-0.1,h-0.5]) rotate([-90,0,0]) cylinder(r=5,h=5);
-  }
-}
-// Printable exterior down. In the closed assembly flip around X and place at
-// rim height + 2.4; the 2.5mm engagement ring remains above the insert.
-module case_lid(w,d,s="") {
-  difference() {
-    union() {
-      slab(w+8,d+8,2.4,5);
-      translate([0,0,2.4-eps]) difference() {
-        slab(w-0.3,d-0.3,2.5+eps,3);
-        translate([0,0,-eps]) slab(w-3.5,d-3.5,2.5+3*eps,2.1);
-      }
-    }
-    if(len(s)>0) translate([0,0,0.35]) rotate([180,0,0]) linear_extrude(0.5)
-      text(s,size=min(6,(w-6)/(max(1,len(s))*1.15)),font="Liberation Sans:style=Bold",halign="center",valign="center");
-  }
-}
-module grid_fit_test() {
-  union() { grid_foot(1,1); grid_bridge(1,1,7); }
-}
-module lid_fit_base() {
-  intersection() { case_base(40,40,15); translate([-25,-25,-eps]) cube([25,25,16]); }
-}
-module lid_fit_lid() {
-  intersection() { case_lid(40,40); translate([-25,0,-eps]) cube([25,25,6]); }
-}
-module key_fit_tester(k,offsets,offset_labels,heading) {
-  n=len(offsets); w=(n-1)*22+24; h=socket_d(k)+3;
-  union() {
-    difference() {
-      slab(w,28,h,3);
-      for(i=[0:n-1]) translate([(i-(n-1)/2)*22,3,0]) offset_socket_cut(k,h,offsets[i]);
-    }
-    for(i=[0:n-1]) label(offset_labels[i],(i-(n-1)/2)*22,-3,h,19,2.4);
-    label(heading,0,-10,h,w-8,2.3);
-  }
 }
 `;
 

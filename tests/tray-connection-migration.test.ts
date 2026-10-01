@@ -35,12 +35,13 @@ describe('retired tray connection migration', () => {
     const c = defaultConfig(); Object.assign(c.options.tray, { lockStyle });
     expect(() => validateConfig(c)).toThrow('Tray lock mechanism');
   });
-  it.each(['tray_lock', 'tray_clips', 'tray_captive'])('replaces the %s sample with the two-piece enclosure sample', kind => {
-    const c = defaultConfig(); c.template = 'interface_tests';
-    Object.assign(c.options.interfaceTests, { kind });
-    const restored = parseConfig(serializeConfig(c));
-    expect(restored.options.interfaceTests.kind).toBe('tray_snap');
+  it.each(['tray_lock', 'tray_clips', 'tray_captive'])('opens a retired %s fit-test project as an inventory tray with its keys', kind => {
+    const c = JSON.parse(JSON.stringify(defaultConfig()));
+    Object.assign(c, { template: 'interface_tests' }); c.options.interfaceTests = { kind };
+    const restored = parseConfig(JSON.stringify(c));
+    expect(restored.template).toBe('inventory_tray');
+    expect(restored.options).not.toHaveProperty('interfaceTests');
     expect(restored.slots).toEqual(c.slots);
-    expect(buildProject(restored).parts.map(p => p.id)).toEqual(['fit-tray-snap-lower', 'fit-tray-snap-upper']);
+    expect(buildProject(restored).parts.map(p => p.id)).toEqual(['tray']);
   });
 });

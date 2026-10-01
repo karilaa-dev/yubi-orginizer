@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { defaultConfig, KEY_TYPES, parseConfig, serializeConfig } from '../src/config';
 import { buildProject, buildTrayH20Test, inventoryTrayLayout, inventoryTraySupports, trayStackGap } from '../src/geometry';
 import { H20_V7, h20V7Stations } from '../src/geometry/tray-h20';
-import { readDraft, readProjects, saveProject, writeDraft } from '../src/projects';
+import { createMemoryStorage, createProject, duplicateProject, getProject, listProjects } from '../src/projects';
 import { TRAY_SLIDE_DIRECTIONS } from '../src/tray-slide';
 import { trayConnectionInstructions } from '../src/export';
 
@@ -13,14 +13,15 @@ function tray() {
 }
 
 describe('three tray types and H20 compatibility', () => {
-  it.each(['none', 'stackable', 'h20_slide_v7', 'snap_fit'] as const)('preserves %s through JSON, drafts and named project copies', connection => {
+  it.each(['none', 'stackable', 'h20_slide_v7', 'snap_fit'] as const)('preserves %s through JSON, local projects and duplicated copies', connection => {
     const c = tray(); c.options.tray.connection = connection;
     expect(parseConfig(serializeConfig(c))).toEqual(c);
-    const data = new Map<string, string>();
-    const store = { getItem: (k: string) => data.get(k) ?? null, setItem: (k: string, v: string) => { data.set(k, v); } };
-    writeDraft(store, c); expect(readDraft(store)?.config).toEqual(c);
-    saveProject(store, c, 'Original'); saveProject(store, c, 'Copy');
-    expect(readProjects(store).map(p => p.config)).toEqual([c, c]);
+    const store = createMemoryStorage();
+    const original = createProject(store, { config: c, name: 'Original' });
+    const copy = duplicateProject(store, original.id);
+    expect(getProject(store, original.id)?.config).toEqual(c);
+    expect(getProject(store, copy.id)?.config).toEqual(c);
+    expect(listProjects(store).projects.map(p => p.config)).toEqual([c, c]);
   });
   it('uses the original two-pin coupon datums and refuses degenerate datums', () => {
     expect(h20V7Stations(40, 28)).toEqual({ pins: [[-6, -7], [-6, 7]], guides: [[12, -7, 8], [12, 7, 8]] });
@@ -118,10 +119,10 @@ describe('slide direction', () => {
     expect(legacy).toContain(`,6,${direction.angle},"regular");`);
     c.slots = c.slots.slice(0, 1);
     expect(buildProject(c).parts[1]).toEqual(buildProject({ ...c, slots: tray().slots }).parts[1]);
-    const data = new Map<string, string>();
-    const store = { getItem: (k: string) => data.get(k) ?? null, setItem: (k: string, v: string) => { data.set(k, v); } };
-    writeDraft(store, c); saveProject(store, c, direction.label);
-    expect(readDraft(store)?.config).toEqual(c); expect(readProjects(store)[0].config).toEqual(c);
+    const store = createMemoryStorage();
+    const original = createProject(store, { config: c, name: direction.label });
+    expect(getProject(store, original.id)?.config).toEqual(c);
+    expect(getProject(store, duplicateProject(store, original.id).id)?.config).toEqual(c);
   });
   it('rotates asymmetric rectangular stations as one interface', () => {
     expect(h20V7Stations(60, 80, 'front')).toEqual({ pins: [[23, -26], [-23, -26]], guides: [[23, 32, 8], [-23, 32, 8]] });

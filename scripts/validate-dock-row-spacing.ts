@@ -119,6 +119,7 @@ assert.ok(labelToPreviousKeyGap > 4);
 const rendered = [];
 for (const label of [sampleLabels[0], sampleLabels[2]]) {
   const config = defaultConfig();
+  config.template = 'desktop_dock';
   config.slots = [...KEY_TYPES, ...KEY_TYPES].map((type, i) => ({ id: `key-${i}`, type, label, occupied: true }));
   Object.assign(config.options.dock, { columns: 3, spacing: 22, rowSpacing: pitch, edgeMargin: 12, depthMargin: 18, height, title: 'COMPACT' });
   assert.deepEqual(parseConfig(serializeConfig(config)), config);

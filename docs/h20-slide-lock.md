@@ -1,11 +1,11 @@
 # Inventory tray connections
 
-The tray selector offers **Non-stackable**, **Stackable**, and **Slide-lock**.
-Non-stackable retains the existing optional lift-off lid, with no underside tray
-receiver. Stackable uses the existing locating rim and underside groove; it lifts
+The Stacking group in Tray settings offers **Standalone**, **Stackable** and
+**Slide-lock**. Standalone retains the existing optional lift-off lid, with no
+underside tray receiver. Stackable uses the existing locating rim and underside groove; it lifts
 apart. Slide-lock uses the supplied two-pin H20/V7 reference. All three support
 optional lids. Saved `snap_fit` projects retain their original geometry and show
-an explanatory legacy notice. `stackable` now round-trips without migrating to
+as **Snap-fit (from an older version)**. `stackable` now round-trips without migrating to
 snap-fit; the retired `slide_lock` identifier keeps its prior snap migration.
 The new incompatible interface has the explicit ID `h20_slide_v7`.
 
@@ -13,8 +13,8 @@ The new incompatible interface has the explicit ID `h20_slide_v7`.
 
 Two reinforced pins and two 8 × 6 × 3 mm guides are integral with each tray.
 Their four underside receivers use the same external-footprint datums on every
-layer. **Sliding direction** chooses the upper layer's locking motion: Left,
-Right, Front, or Back, viewed from above. Front is the side-text edge (-Y).
+layer. **Slide direction** chooses the upper layer's locking motion: Left,
+Right, Front, or Back, viewed from above. Front is the front-text edge (-Y).
 Left is the default for older projects. The pins, guides, underside receivers,
 and local bearing pads rotate together; keys and text stay in place. Start
 6 mm opposite the chosen direction, lower, then slide until flush. Reverse
@@ -30,13 +30,13 @@ incorrect signed solids in the app backend.
 
 A 13 mm border on the two receiver edges reserves the full receiver sweep plus
 about 2.05 mm to the storage envelope. The other two edges use the selected
-outer margin (5 mm minimum), removing 16 mm along the sliding axis at the default
+edge margin (5 mm minimum), removing 16 mm along the sliding axis at the default
 margin. Front/back directions reserve the side receivers against retention
-slots and label width too, growing an unlocked footprint if needed. Explicit
-larger margins and locked footprints remain unchanged. Rounded body corners retain at least 3 mm outside the receiver
-mouths; side engraving is only 0.35 mm deep. The minimum body height remains
-8.6 mm, leaving 2.4 mm over the deepest receiver. Undersized locked footprints
-produce a required-size error; unlocked footprints grow without scaling pockets.
+slots and label width too, growing a Fit to keys footprint if needed. Explicit
+larger margins and fixed sizes remain unchanged. Rounded body corners retain at least 3 mm outside the receiver
+mouths; front-text engraving is only 0.35 mm deep. The minimum body height remains
+8.6 mm, leaving 2.4 mm over the deepest receiver. An undersized fixed size
+produces a required-size error; Fit to keys footprints grow without scaling pockets.
 Empty inventories keep the app's empty state and produce no degenerate mesh.
 
 Local bearing pads around the four connector roots raise the male root plane
@@ -63,7 +63,7 @@ the grips rotate with that direction. They provide purchase without changing
 the supplied H20 interference fit. Compact footprints shorten the grips to
 stay clear of the sockets; grips are omitted if less than 8 mm is available.
 
-**Minimal material** keeps its continuous 1.2 mm
+**Minimal** keeps its continuous 1.2 mm
 panel, 1.2 mm wide exterior ribs with spans of at most 40 mm, and a reinforced
 perimeter. Neither version has through-holes. The ribs are outside, so they do
 not affect key clearance. Lettering leaves at least 0.85 mm beneath its deepest
@@ -95,11 +95,11 @@ lid clearance, and row spacing do not change.
 
 ## Verification and samples
 
-Choose **Mechanical fit tests → Slide-lock (H20/V7)** for two identical 40 × 28 mm
-coupons with the reference 8.4 mm zero-gap body. This local fit sample always
-slides left; the arrow points toward locking, independently of tray direction.
-“All interfaces” also includes this pair. Generated tray/lid STL and portable
-3MF exports contain no separate fasteners or preview keys.
+`npm run validate:h20` also exports two identical 40 × 28 mm developer coupons
+with the reference 8.4 mm zero-gap body; they are not generated in the app. This
+sample always slides left; the arrow points toward locking, independently of
+tray direction. Generated tray/lid STL and portable 3MF exports contain no
+separate fasteners or preview keys.
 
 Run `npm run check`, `npm run build`, and `npm run validate:h20`. The last command
 writes real WASM meshes, self-contained SCAD, portable 3MF, ZIP packages and

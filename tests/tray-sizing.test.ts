@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { defaultConfig, parseConfig, serializeConfig, validateConfig } from '../src/config';
 import { buildProject, inventoryTrayLayout, trayFootprintError } from '../src/geometry';
-import { readDraft, writeDraft } from '../src/projects';
+import { createMemoryStorage, createProject, duplicateProject, getProject } from '../src/projects';
 import { keyLabelMillimeters, keyLabelPercent, readLegacyLidSize } from '../src/text-size';
 
 function example() {
@@ -32,21 +32,19 @@ describe('locked tray footprint', () => {
     expect(buildProject(c).dimensions.slice(0, 2)).toEqual([200, 200]);
   });
   it('preserves a lock through empty selections, text edits and local/configuration round trips', () => {
-    const c = example(), store = new Map<string, string>();
+    const c = example(), store = createMemoryStorage();
     c.options.tray.footprint = { width: 170, depth: 130 };
     c.slots = []; c.options.tray.lidTextPercent = 50; c.options.tray.lidTextRotation = 270;
     expect(parseConfig(serializeConfig(c))).toEqual(c);
-    writeDraft({ getItem: k => store.get(k) ?? null, setItem: (k, v) => { store.set(k, v); } }, c);
-    expect(readDraft({ getItem: k => store.get(k) ?? null, setItem: () => {} })?.config).toEqual(c);
+    const original = createProject(store, { config: c, name: 'Original' });
+    expect(getProject(store, original.id)?.config).toEqual(c);
+    expect(getProject(store, duplicateProject(store, original.id).id)?.config).toEqual(c);
     expect(inventoryTrayLayout(c)).toMatchObject({ width: 170, depth: 130 });
   });
-  it('does not change other organizer dimensions', () => {
-    const c = example();
-    for (const template of ['desktop_dock', 'travel_case', 'grid_organizer', 'modular_rail'] as const) {
-      c.template = template; c.options.tray.footprint = null; const before = buildProject(c);
-      c.options.tray.footprint = { width: 300, depth: 400 };
-      expect(buildProject(c)).toEqual(before);
-    }
+  it('does not change desktop dock dimensions', () => {
+    const c = example(); c.template = 'desktop_dock'; c.options.tray.footprint = null; const before = buildProject(c);
+    c.options.tray.footprint = { width: 300, depth: 400 };
+    expect(buildProject(c)).toEqual(before);
   });
   it.each([{}, [], false, '100', { width: 0, depth: 90 }, { width: 90, depth: Infinity }, { width: 90, depth: '100' }])('rejects malformed locked dimensions %j', footprint => {
     const c = example(); Object.assign(c.options.tray, { footprint });

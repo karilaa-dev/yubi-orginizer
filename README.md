@@ -1,19 +1,19 @@
-# Keyform
+# yubi-orginizer
 
-Design printable YubiKey organizers in your browser. Keyform generates actual
-models with OpenSCAD WASM and previews them with Three.js. Designs, saved projects,
-and exports stay on your device; no account or backend is required.
+Design printable YubiKey organizers in your browser. yubi-orginizer generates
+actual models with OpenSCAD WASM and previews them with Three.js. Projects and
+exports stay on your device; no account or backend is required.
 
 ## Features
 
-- Desktop docks, modular cartridge rails, inventory trays, Gridfinity organizers,
-  and travel cases.
+- Inventory trays and desktop docks. Desktop dock socket fit is still being
+  refined; print a small one-key dock before a full organizer.
 - Six key shapes: YubiKey 5 NFC, 5C NFC, 5 Nano, 5C Nano, 5C, and 5Ci.
-- Adjustable layouts, finger access, key retention, printed labels and lids.
-- Three tray types: non-stackable, lift-off stacking, and H20/V7 slide-lock.
-- Socket and mechanical fit samples, including a two-pin slide-lock pair.
-- STL, editable SCAD, 3MF and project JSON exports.
-- Local project saving and offline use after the app has been cached.
+- Adjustable layouts, finger scoops, retention tabs, printed labels and lids.
+- Three tray connections: Standalone, Stackable (lift-off locating rims) and
+  H20/V7 Slide-lock.
+- STL, editable SCAD, 3MF and project file (`.yubi-orginizer.json`) exports.
+- Automatic saving in the browser, and offline use after the first visit.
 
 ## Getting started
 
@@ -34,30 +34,51 @@ npm run preview
 The build outputs a static site in `dist/`. Production preview supports the
 service worker; the development server does not install the offline app.
 
-## Using Keyform
+## Using yubi-orginizer
 
-1. Choose an organizer and add keys. Repeated keys and custom labels are supported.
-2. Adjust **Size & layout**. Hiding a reference key preserves its pocket; removing
-   a key removes the pocket.
-3. Inspect the preview and use **Explode** to view separate parts.
-4. Save a named project locally, or download a project JSON backup.
-5. Choose **Download**, select the parts and export format, then inspect the file
-   in your slicer before printing.
+1. The app opens on the **Projects** page, or on the project you had open last.
+   Choose **Inventory tray** or **Desktop dock** to start a new project, or open
+   an existing project card.
+2. In the **Keys** tab, choose **Add keys** and set how many of each model you
+   need. Repeated keys and custom labels are supported, and **Print labels** and
+   **Label size** are at the top of the tab. Hiding a key in the preview keeps
+   its pocket; removing a key removes the pocket.
+3. In **Tray settings** (or **Dock settings**), adjust the groups: **Layout**,
+   **Stacking**, **Lid**, **Size** and **Pockets & text**. A collapsed group
+   shows a summary of its current settings.
+4. Changes save automatically; the editor bar shows **Saved**. Select the project
+   name to rename it. The **⋯** project menu offers Rename, Duplicate,
+   **New matching layer**, **Save project file (.json)** and Delete. Deleting can
+   be undone, and deleted projects stay under **Recently deleted** on the
+   Projects page for 30 days.
+5. Inspect the preview and use **Explode** to view separate parts. Choose
+   **Download**, select the parts and export format, then inspect the file in
+   your slicer before printing. Downloaded files are named after the project.
 
-For matching tray layers with different contents, use **Lock tray dimensions**
-to preserve their outside width and depth. Choose **Non-stackable** for a standalone
-tray with an optional lift-off lid, **Stackable** for locating rims, or **Slide-lock**
-for the two-pin H20/V7 connection. Saved enclosure snap-fit projects retain their
-geometry. Regenerate both mating parts when changing the connection type.
+Under **Stacking**, choose **Standalone** for a single tray with an optional
+lift-off lid, **Stackable** for locating rims, or **Slide-lock** for the two-pin
+H20/V7 connection. Every layer of a stack needs the same size, connection and
+slide direction. **New matching layer** creates an empty tray that stacks on the
+current one: it switches the current tray to **Size › Fixed size** so the
+outside dimensions match, copies the connection and layout, and can move the lid
+to the new top layer. You can also set **Tray settings › Size › Fixed size** by
+hand. Saved enclosure snap-fit projects retain their geometry and appear as
+**Snap-fit (from an older version)**. Regenerate both mating parts when changing
+the connection type.
 
 See [printing and fit](docs/printing.md) and the
 [H20/V7 slide-lock design](docs/h20-slide-lock.md). Physical fit, retention
-and durability require a printed sample; digital validation is not a physical test.
+and durability require a printed test; digital validation is not a physical test.
 
-Saved projects belong to the browser and device where they were created.
-Clearing site data removes them, so export JSON backups for important designs.
-Wait for **Available offline** before disconnecting. Use **Save & update** when
-a new application version is offered.
+Projects belong to the browser and device where they were created. Clearing
+site data removes them, so save project files for important designs, or use
+**Export all (.zip)** on the Projects page. **Import** on the Projects page opens
+`.json` project files, including files saved by earlier versions of the app, and
+restores **Export all** backups: select the `.zip` as it is, no unzipping needed.
+You can select several files at once.
+
+After the first visit the app works offline. New versions install in the
+background; refreshing applies them, or select **Update**.
 
 ## Development
 

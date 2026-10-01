@@ -1,0 +1,219 @@
+/* Shared UI owned by src/ui (toast, menu, project cards, project dialogs). §K tokens only. */
+
+/* ── Toast ─────────────────────────────────────────────────────────────
+   The #toast element is an always-present live region; its visible surface is
+   inserted while a toast is shown. --toast-offset is the distance from the
+   viewport bottom (the editor raises it above #mobile-bar on small screens). */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: var(--toast-offset, calc(24px + env(safe-area-inset-bottom)));
+  z-index: 1000;
+  width: max-content;
+  max-width: min(440px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.toast-surface {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 8px 8px 8px 16px;
+  border-radius: var(--r-sm);
+  background: var(--inverse);
+  color: var(--on-inverse);
+  box-shadow: var(--shadow-2);
+  font: 400 13px/20px var(--font);
+  pointer-events: auto;
+  animation: toast-in .15s ease-out;
+}
+.toast-surface:not(:has(.toast-action)) { padding-right: 16px; }
+.toast-message { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.toast-action {
+  flex: none;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--inverse-accent);
+  font: 600 13px/20px var(--font);
+  cursor: pointer;
+}
+.toast-action:hover { text-decoration: underline; }
+.toast-action:focus-visible { outline: 2px solid var(--inverse-accent); outline-offset: 1px; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } }
+
+/* ── Menu (popover="auto" or non-modal <dialog>) ─────────────────────── */
+.menu-popover {
+  position: fixed;
+  inset: auto;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+  box-sizing: border-box;
+  min-width: 200px;
+  max-width: min(320px, calc(100vw - 16px));
+  max-height: min(440px, calc(100svh - 16px));
+  margin: 0;
+  padding: 4px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-2);
+}
+.menu-popover::backdrop { background: transparent; }
+.menu-title { display: none; }
+.menu { display: grid; }
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--text);
+  font: 500 13px/20px var(--font);
+  text-align: left;
+  cursor: pointer;
+}
+.menu-item .icon { width: 18px; height: 18px; color: var(--text-2); }
+.menu-item:hover, .menu-item:focus { background: var(--surface-2); }
+.menu-item:focus { outline: none; }
+.menu-item:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.menu-item[aria-disabled=true] { opacity: 1; color: var(--text-2); cursor: not-allowed; }
+.menu-item[aria-disabled=true] .icon { color: var(--text-3); }
+.menu-item.danger, .menu-item.danger .icon { color: var(--error); }
+.menu-text { display: grid; min-width: 0; }
+.menu-hint { font: 400 12px/18px var(--font); color: var(--text-2); }
+.menu-separator { height: 1px; margin: 4px 0; border: 0; background: var(--line); }
+@media (pointer: coarse) { .menu-item { min-height: 44px; } }
+
+/* Action sheet at ≤760 px (menu.ts toggles .is-sheet from the same media query). */
+.menu-popover.is-sheet {
+  inset: auto 0 0 0;
+  width: 100%;
+  max-width: none;
+  max-height: 80svh;
+  padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+  border-bottom: 0;
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  box-shadow: var(--shadow-3);
+}
+.menu-popover.is-sheet::backdrop { background: var(--scrim); }
+.menu-popover.is-sheet .menu-title {
+  display: block;
+  margin: 4px 10px 8px;
+  overflow: hidden;
+  font: 600 14px/22px var(--font);
+  color: var(--text-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.menu-popover.is-sheet .menu-item { min-height: 48px; font-size: 14px; }
+
+/* ── Project cards ──────────────────────────────────────────────────── */
+.project-card {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  transition: border-color .15s ease-out, box-shadow .15s ease-out;
+}
+.project-card:hover { border-color: var(--line-strong); box-shadow: var(--shadow-1); }
+.project-card.is-new { animation: card-new 2s ease-out; }
+@keyframes card-new { 0%, 60% { background: var(--accent-soft); border-color: var(--accent); } }
+.card-open, .card-rename {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+}
+.card-open { cursor: pointer; }
+.card-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 88px;
+  margin-bottom: 8px;
+  overflow: hidden;
+  border-radius: var(--r-sm);
+  background: var(--preview);
+}
+.card-name {
+  display: -webkit-box;
+  overflow: hidden;
+  padding-right: 4px;
+  font: 600 14px/20px var(--font);
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+.card-meta, .card-time { font: 400 12px/18px var(--font); color: var(--text-2); font-variant-numeric: tabular-nums; }
+.card-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 2px 0; }
+.card-chips:empty { display: none; }
+.card-menu {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  border-radius: var(--r-sm);
+  background: var(--glass);
+}
+.card-name-input { width: 100%; }
+.card-rename .field-error { margin: 0; }
+
+/* Thumbnails (projectThumbnail) */
+.thumb { display: block; width: calc(100% - 16px); height: 72px; overflow: visible; }
+.thumb-footprint { fill: var(--surface); stroke: var(--line-strong); stroke-width: 1.25; vector-effect: non-scaling-stroke; }
+.thumb-footprint.is-empty { fill: none; stroke-dasharray: 4 3; }
+.thumb-slot { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.thumb-slot.is-hidden { fill: none; stroke: var(--text-2); stroke-dasharray: 3 2; }
+.thumb-empty { display: grid; grid-template: 100% / 100%; place-items: center; width: calc(100% - 16px); height: 72px; color: var(--text-2); }
+.thumb-empty > * { grid-area: 1 / 1; }
+.thumb-empty .thumb { width: 100%; height: 100%; }
+.thumb-empty .icon { width: 28px; height: 28px; }
+.thumb-dock { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px 4px; max-width: calc(100% - 16px); }
+.thumb-dock .key-illustration { width: 22px; height: 33px; }
+.thumb-more { margin-left: 2px; font: 600 12px/1 var(--font); color: var(--text-2); }
+
+/* ── Project dialogs (matching layer, confirm) ─────────────────────── */
+.project-dialog-body { display: grid; gap: 14px; margin: 0; }
+.project-dialog-body > p { margin: 0; font: 400 14px/22px var(--font); color: var(--text-2); }
+.project-dialog-body .field, .project-dialog-body .field-hint, .project-dialog-body .toggle-row { margin: 0; }
+.project-dialog-body .dialog-footer { justify-content: flex-end; gap: 8px; margin: 4px 0 0; }
+.project-dialog-body .inline-error { margin: 0; }
+
+@media (max-width: 760px) {
+  .project-card .card-open, .project-card .card-rename {
+    display: grid;
+    grid-template-columns: 88px minmax(0, 1fr);
+    align-content: start;
+    column-gap: 12px;
+    padding-right: 52px;
+  }
+  .project-card .card-thumb { grid-row: 1 / span 5; width: 88px; height: 72px; margin: 0; }
+  .project-card .card-menu { top: 10px; right: 8px; background: transparent; }
+  .thumb, .thumb-empty { width: calc(100% - 8px); height: 60px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast-surface, .project-card.is-new { animation: none; }
+  .project-card { transition: none; }
+}

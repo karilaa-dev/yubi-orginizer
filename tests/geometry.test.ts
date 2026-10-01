@@ -1,17 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { Matrix4, Euler, Vector3 } from 'three';
-import { defaultConfig, isTestTemplate, KEY_TYPES, TEMPLATES } from '../src/config';
-import { buildFitTests, buildKeyScad, buildProject, inventoryTrayLayout, inventoryTraySupports, keyDimensions, trayRetentionSpec, trayStackPitch, TRAY_STACK } from '../src/geometry';
-import { calibratedLibrary, TRAY_LID } from '../src/geometry/library';
-import { TRAY_SNAP } from '../src/geometry/tray-snap';
+import { defaultConfig, KEY_TYPES, TEMPLATES } from '../src/config';
+import { buildKeyScad, buildProject, inventoryTrayLayout, inventoryTraySupports, keyDimensions, trayRetentionSpec, trayStackPitch, TRAY_STACK } from '../src/geometry';
+import { calibratedLibrary, library, TRAY_LID } from '../src/geometry/library';
 import profiles from '../src/geometry/profiles/profiles.scad?raw';
 import usbC from '../src/geometry/profiles/calibrated_usb_c.scad?raw';
 import type { HolderConfig, KeyType } from '../src/types';
 
-const holderTemplates = TEMPLATES.filter((template) => !isTestTemplate(template.id));
-
 function sampleConfig(): HolderConfig {
   const config = defaultConfig();
+  config.template = 'desktop_dock';
   config.slots = KEY_TYPES.map((type, i) => ({ id: `sample-${i}`, type, label: type, occupied: true }));
   return config;
 }
@@ -67,7 +65,7 @@ describe('accepted key fit geometry', () => {
 });
 
 describe('parametric projects', () => {
-  it.each(holderTemplates)('$id supports empty, single, repeated and maximum-size selections', ({ id }) => {
+  it.each(TEMPLATES)('$id supports empty, single, repeated and maximum-size selections', ({ id }) => {
     for (const count of [0, 1, 7, 48]) {
       const config = repeated(count);
       config.template = id;
@@ -82,7 +80,7 @@ describe('parametric projects', () => {
     }
   });
 
-  it.each(holderTemplates)('$id reserves unoccupied slots but never prints reference keys', ({ id }) => {
+  it.each(TEMPLATES)('$id reserves unoccupied slots but never prints reference keys', ({ id }) => {
     const config = sampleConfig();
     config.template = id;
     const full = buildProject(config);
@@ -123,44 +121,15 @@ describe('parametric projects', () => {
     expect(buildProject(config).dimensions[1]).toBe(64);
     expect(defaultConfig().options.dock.rowSpacing).toBe(45);
   });
-  it('adjusts tray outer dimensions and case clearance around an unchanged set of pockets', () => {
+  it('adjusts tray outer dimensions around an unchanged set of pockets', () => {
     const config = sampleConfig();
     config.template = 'inventory_tray';
-    Object.assign(config.options.tray, { columns: 3, spacing: 42, rowSpacing: 110, margin: 20, height: 20 });
+    Object.assign(config.options.tray, { columns: 3, spacing: 42, margin: 20, height: 20 });
     const tray = buildProject(config);
     expect(tray.dimensions.slice(0, 2)).toEqual([143, 153.6]);
     expect(tray.dimensions[2]).toBeCloseTo(21.25);
     expect(sourceCall(tray.parts[0].scad).args[5]).toBe(20);
     expect(tray.keys[3].position[2]).toBeCloseTo(20 - 6.6 + 3.5);
-    config.template = 'travel_case';
-    config.options.case.headroom = 15;
-    const container = buildProject(config);
-    expect(container.dimensions.slice(0, 2)).toEqual([151, 224]);
-    expect(container.dimensions[2]).toBeCloseTo(43.8);
-    const lid = container.parts.find((p) => p.id === 'case-lid')!;
-    const insert = container.parts.find((p) => p.id === 'case-insert')!;
-    expect(lid.position[2] - 4.9 - (insert.position[2] + 20 + 0.4)).toBeCloseTo(16.1);
-    expect(sourceCall(insert.scad).args[5]).toBe(20);
-  });
-  it('changes rail end margins without changing cartridge spacing or their sliding interfaces', () => {
-    const config = sampleConfig(); config.template = 'modular_rail';
-    const normal = buildProject(config);
-    config.options.rail.endMargin = 30;
-    const wider = buildProject(config);
-    expect(wider.dimensions[0] - normal.dimensions[0]).toBe(50);
-    expect(wider.parts.slice(1)).toEqual(normal.parts.slice(1));
-    expect(wider.keys).toEqual(normal.keys);
-    expect(sourceCall(wider.parts[0].scad).args[2]).toBe(30);
-  });
-  it('raises grid storage while preserving its footprint, feet, and key insertion depths', () => {
-    const config = sampleConfig(); config.template = 'grid_organizer';
-    const normal = buildProject(config);
-    config.options.grid.extraHeight = 15;
-    const taller = buildProject(config);
-    expect(taller.dimensions.slice(0, 2)).toEqual(normal.dimensions.slice(0, 2));
-    expect(taller.dimensions[2] - normal.dimensions[2]).toBeCloseTo(15);
-    taller.keys.forEach((key, i) => expect(key.position[2] - normal.keys[i].position[2]).toBeCloseTo(15));
-    taller.parts.forEach((part) => expect(sourceCall(part.scad).args[6]).toBe(15));
   });
 
   it('safely encodes custom text and supports individually blank labels', () => {
@@ -175,50 +144,6 @@ describe('parametric projects', () => {
     config.labels = false;
     expect(sourceCall(buildProject(config).parts[0].scad).args[1]).toEqual(['']);
     expect(sourceCall(buildProject(config).parts[0].scad).args[6]).toBe(config.options.dock.title);
-    config.template = 'travel_case';
-    expect(sourceCall(buildProject(config).parts.find((p) => p.id === 'case-lid')!.scad).args[2]).toBe(config.options.case.title);
-  });
-
-  it('separates printable rail cartridges from their assembled offsets', () => {
-    const config = sampleConfig();
-    config.template = 'modular_rail';
-    const p = buildProject(config);
-    expect(p.parts).toHaveLength(7);
-    expect(p.parts[0].position).toEqual([0, 0, 0]);
-    expect(p.parts.slice(1).every((part) => part.position[2] === 3)).toBe(true);
-    expect(sourceCall(p.parts[1].scad).module).toBe('cartridge');
-    expect(p.parts[0].scad).toContain('translate([0,y,7.4])');
-    expect(p.parts[1].scad).toContain('slab(25.6,28.4,3,1.4)');
-  });
-
-  it('provides a closed, non-exploded case with a positive lid/insert clearance', () => {
-    const config = sampleConfig();
-    config.template = 'travel_case';
-    const p = buildProject(config);
-    const lid = p.parts.find((part) => part.id === 'case-lid')!;
-    const insert = p.parts.find((part) => part.id === 'case-insert')!;
-    expect(lid.rotation).toEqual([Math.PI, 0, 0]);
-    expect(lid.position[2] - 4.9).toBeCloseTo(12.5);
-    expect(lid.position[2] - 4.9 - (insert.position[2] + 8.6 + 0.4)).toBeGreaterThan(1);
-    expect(sourceCall(lid.scad).module).toBe('case_lid');
-    expect(p.dimensions).toEqual([172, 84, 17.4]);
-  });
-
-  it.each(['mixed', 'upright', 'flat'] as const)('packs the %s grid into independent 2×2 tiles with the approved capacities', (mode) => {
-    const config = repeated(48);
-    config.template = 'grid_organizer';
-    config.options.grid.mode = mode;
-    config.slots.forEach((s, i) => { s.type = KEY_TYPES[i % KEY_TYPES.length]; });
-    const p = buildProject(config);
-    expect(p.keys).toHaveLength(48);
-    for (const part of p.parts) {
-      const { args } = sourceCall(part.scad);
-      expect(args[3]).toBe(2);
-      expect(args[4]).toBe(2);
-      expect((args[0] as string[]).length).toBeLessThanOrEqual(args[5] ? 2 : 4);
-      expect(part.scad).toContain('grid_ring(35.6,0.8,0,x,y)');
-      expect(part.scad).toContain('grid_ring(41.5,3.75,4.75,x,y)');
-    }
   });
 });
 
@@ -249,14 +174,12 @@ describe('inventory tray retention, stacking, and layer text', () => {
     for (const row of withoutLabels.rows) expect(row.back).toBeGreaterThanOrEqual(9.4);
   });
 
-  it.each(KEY_TYPES)('expands %s inventory finger access while keeping case scoops and pocket floors unchanged', (type) => {
+  it.each(KEY_TYPES)('expands %s inventory finger access while keeping pocket floors unchanged', (type) => {
     const config = repeated(2, type); config.template = 'inventory_tray'; config.labels = false;
     Object.assign(config.options.tray, { columns: 1, rowGap: 2 });
     const inventoryDepths: number[] = [];
-    let caseDimensions: number[] | undefined;
-    let caseKeys: ReturnType<typeof buildProject>['keys'] | undefined;
-    for (const [scoop, inventoryRadius, caseRadius] of [['small', 5, 4], ['default', 6, 5], ['large', 7, 6]] as const) {
-      config.options.tray.scoop = scoop; config.template = 'inventory_tray';
+    for (const [scoop, inventoryRadius] of [['small', 5], ['default', 6], ['large', 7]] as const) {
+      config.options.tray.scoop = scoop;
       const layout = inventoryTrayLayout(config), project = buildProject(config);
       expect(layout.scoopRadius).toBe(inventoryRadius);
       expect(sourceCall(project.parts[0].scad).args[6]).toBe(inventoryRadius);
@@ -264,33 +187,10 @@ describe('inventory tray retention, stacking, and layer text', () => {
       expect(layout.rows[1].minY - layout.rows[0].maxY).toBeCloseTo(2);
       expect(layout.height - (keyDimensions[type].thickness - 0.4)).toBeGreaterThanOrEqual(2);
       inventoryDepths.push(layout.depth);
-
-      config.template = 'travel_case';
-      const container = buildProject(config);
-      expect(sourceCall(container.parts.find((part) => part.id === 'case-insert')!.scad).args[6]).toBe(caseRadius);
-      if (caseDimensions) {
-        expect(container.dimensions).toEqual(caseDimensions);
-        expect(container.keys).toEqual(caseKeys);
-      }
-      caseDimensions = container.dimensions; caseKeys = container.keys;
     }
     // Each of the two rows gains 1 mm of finger-access depth per size step.
     expect(inventoryDepths[1] - inventoryDepths[0]).toBeCloseTo(2);
     expect(inventoryDepths[2] - inventoryDepths[1]).toBeCloseTo(2);
-  });
-
-  it('keeps compact inventory row gaps independent of travel-case pitch', () => {
-    const config = sampleConfig(); config.template = 'travel_case';
-    config.options.tray.columns = 3;
-    const before = buildProject(config);
-    config.options.tray.rowGap = 2;
-    expect(buildProject(config)).toEqual(before);
-    config.options.tray.rowSpacing = 100;
-    expect(buildProject(config).dimensions[1]).toBeGreaterThan(before.dimensions[1]);
-    config.template = 'inventory_tray';
-    const inventory = buildProject(config);
-    config.options.tray.rowSpacing = 66;
-    expect(buildProject(config)).toEqual(inventory);
   });
 
   it('defaults to integral retention, preserving seated key positions and the original footprint', () => {
@@ -373,7 +273,7 @@ describe('inventory tray retention, stacking, and layer text', () => {
   });
 
   it('does not apply inventory features to the travel case insert or any other organizer', () => {
-    for (const template of holderTemplates.filter((t) => t.id !== 'inventory_tray')) {
+    for (const template of TEMPLATES.filter((t) => t.id !== 'inventory_tray')) {
       const config = sampleConfig(); config.template = template.id;
       Object.assign(config.options.tray, { retention: false, connection: 'none', sideText: '' });
       const plain = buildProject(config);
@@ -398,47 +298,18 @@ describe('illustrative keys and fit pieces', () => {
     expect(tip.y).toBeCloseTo(3, 6);
     expect(buildKeyScad(type, 'body')).toContain(`k=${JSON.stringify(type)};`);
   });
+});
 
-  it('exports both locking samples alongside the other interface tests', () => {
-    const p = buildFitTests();
-    expect(p.parts).toHaveLength(9);
-    expect(p.keys).toHaveLength(0);
-    expect(p.parts.map((part) => sourceCall(part.scad).module)).toEqual(['grid_fit_test', 'rail_base', 'cartridge', 'lid_fit_base', 'lid_fit_lid', 'tray_snap_coupon_lower', 'tray_snap_lid', 'tray_h20_coupon', 'tray_h20_coupon']);
-  });
-  it.each([
-    ['grid', 1, [41.5, 41.5, 7]], ['rail', 2, [36, 36, 16.6]], ['lid', 2, [24, 24, 17.4]], ['tray_snap', 2, [TRAY_SNAP.couponWidth, TRAY_SNAP.couponDepth, TRAY_SNAP.couponHeight + TRAY_SNAP.gap + TRAY_SNAP.lidThickness]], ['tray_h20', 2, [40, 28, 21]], ['all', 9, [305.75, Math.max(41.5, TRAY_SNAP.couponDepth), Math.max(21, TRAY_SNAP.couponHeight + TRAY_SNAP.gap + TRAY_SNAP.lidThickness)]],
-  ] as const)('generates only the %s interface pieces and reports their real assembly dimensions', (kind, count, dimensions) => {
-    const config = sampleConfig(); config.template = 'interface_tests'; config.slots = [];
-    config.options.interfaceTests.kind = kind;
-    const p = buildProject(config);
-    expect(p.parts).toHaveLength(count);
-    expect(p.keys).toHaveLength(0);
-    expect(p.dimensions).toEqual(dimensions);
-    expect(p).toEqual(buildFitTests(kind));
-  });
-  it.each(['A', 'C', 'AN', 'CN'] as const)('creates a labeled %s socket calibration coupon without slots or reference keys', (profile) => {
-    const config = sampleConfig(); config.template = 'key_fit_tester'; config.slots = [];
-    config.options.tester = { profile, startOffset: -0.1, step: 0.1, samples: 3 };
-    const p = buildProject(config);
-    expect(p.parts).toHaveLength(1);
-    expect(p.keys).toHaveLength(0);
-    const call = sourceCall(p.parts[0].scad);
-    expect(call.module).toBe('key_fit_tester');
-    expect(call.args.slice(0, 3)).toEqual([profile, [-0.1, 0, 0.1], ['-0.10', '0.00', '+0.10']]);
-    expect(p.dimensions.slice(0, 2)).toEqual([68, 28]);
-    expect(p.dimensions[2]).toBeCloseTo(keyDimensions[profile].socketDepth + 3.35);
-    config.labels = false;
-    expect(buildProject(config).parts[0].scad).toBe(p.parts[0].scad);
-  });
-  it('keeps the zero specimen exact and labels the full five-sample offset range', () => {
-    const config = sampleConfig(); config.template = 'key_fit_tester'; config.slots = [];
-    config.options.tester = { profile: 'C', startOffset: 0.3, step: 0.2, samples: 5 };
-    const p = buildProject(config);
-    expect(sourceCall(p.parts[0].scad).args[1]).toEqual([0.3, 0.5, 0.7, 0.9, 1.1]);
-    expect(p.dimensions[0]).toBe(112);
-    expect(p.parts[0].scad).toContain('if(abs(fit_offset)<0.000000001) socket_cut(k,top)');
-    expect(calibratedLibrary).not.toContain('scale(');
-    config.options.tester = { profile: 'AN', startOffset: -0.1, step: 0.123, samples: 3 };
-    expect(sourceCall(buildProject(config).parts[0].scad).args[2]).toEqual(['-0.10', '+0.023', '+0.146']);
+describe('SCAD library integrity', () => {
+  // OpenSCAD silently skips unknown modules, which would drop geometry from a
+  // printable part without failing generation. Every call must resolve.
+  const BUILTINS = new Set(['assert', 'ceil', 'children', 'circle', 'concat', 'cos', 'cube', 'cylinder', 'difference', 'echo', 'for', 'hull', 'if',
+    'intersection', 'is_undef', 'len', 'let', 'linear_extrude', 'max', 'min', 'mirror', 'multmatrix', 'offset', 'ord', 'polygon', 'polyhedron',
+    'rotate', 'scale', 'sin', 'square', 'text', 'textmetrics', 'translate', 'union']);
+  it('defines every module and function the library calls', () => {
+    const code = library.replace(/\/\/.*$/gm, '').replace(/"(?:[^"\\]|\\.)*"/g, '""');
+    const defined = new Set([...code.matchAll(/\b(?:module|function)\s+([A-Za-z_]\w*)\s*\(/g)].map((m) => m[1]));
+    const called = [...new Set([...code.matchAll(/(?<![\w$.])([A-Za-z_]\w*)\s*\(/g)].map((m) => m[1]))];
+    expect(called.filter((name) => !defined.has(name) && !BUILTINS.has(name))).toEqual([]);
   });
 });

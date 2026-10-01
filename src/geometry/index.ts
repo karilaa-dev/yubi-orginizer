@@ -1,6 +1,5 @@
 import type { HolderConfig, KeyPlacement, KeyType, PartSpec, ProjectGeometry, Slot, Vec3 } from '../types';
 import { scadCall, TRAY_RETENTION, TRAY_STACK, TRAY_STACK_PILLAR, TRAY_LID, KEY_LABEL_LAYOUT, trayRetentionBounds } from './library';
-import { fitOffsets, formatFitOffset } from '../fit-options';
 import { lidExplodeOffset } from '../preview-layout';
 import { CI_INVENTORY_TOUCH_RELIEF } from './ci-touch';
 import { traySlideDirection } from '../tray-slide';
@@ -34,7 +33,6 @@ export const keyDimensions: Record<KeyType, { length: number; thickness: number;
   CI: { length: 40.3, thickness: 5, pocketLength: 41.6, socketDepth: 6.6 },
 };
 
-const keyLabels: Record<KeyType, string> = { A: 'A NFC', C: 'C NFC', AN: 'A NANO', CN: 'C NANO', CK: '5C', CI: '5Ci' };
 const zero = (): Vec3 => [0, 0, 0];
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, Number.isFinite(v) ? v : min));
 type Point = [number, number];
@@ -78,31 +76,13 @@ function keyPlacement(slot: Slot, x: number, y: number, top: number, flat: boole
   return { slotId: slot.id, type: slot.type, partId, position: [x, y, top - d.socketDepth + (reverse ? d.length : 0)], rotation: [Math.PI / 2, 0, reverse ? Math.PI : 0] };
 }
 
-function placements(slots: Slot[], xy: Point[], top: number, flat: boolean, partId: string, offset: Vec3 = zero()): KeyPlacement[] {
-  return slots.flatMap((slot, i) => slot.occupied ? [keyPlacement(slot, xy[i][0] + offset[0], xy[i][1] + offset[1], top + offset[2], flat, partId)] : []);
-}
-
-function trayLayout(config: HolderConfig) {
-  const n = config.slots.length;
-  const columns = columnsFor(n, config.options.tray.columns);
-  const rows = Math.ceil(n / columns);
-  const spacing = clamp(config.options.tray.spacing, 24, 42);
-  const margin = clamp(config.options.tray.margin, 5, 20);
-  const rowSpacing = clamp(config.options.tray.rowSpacing ?? 66 + margin * 2, 66, 110);
-  const height = clamp(config.options.tray.height ?? 8.6, 8.6, 20);
-  return {
-    xy: layout(n, columns, spacing, rowSpacing),
-    width: Math.ceil((columns - 1) * spacing + 18.6 + 2 * margin),
-    depth: (rows - 1) * rowSpacing + 66 + 2 * margin,
-    height,
-    scoopRadius: { small: 4, default: 5, large: 6 }[config.options.tray.scoop],
-    labelWidth: Math.min(spacing - 4, 24),
-  };
+function placements(slots: Slot[], xy: Point[], top: number, flat: boolean, partId: string): KeyPlacement[] {
+  return slots.flatMap((slot, i) => slot.occupied ? [keyPlacement(slot, xy[i][0], xy[i][1], top, flat, partId)] : []);
 }
 
 /** Inventory rows use the actual pocket, finger-access, and label envelopes.
  * rowGap is the free space between those envelopes, rather than a fixed pitch
- * that forces Nano keys into full-length rows. Case inserts retain their layout. */
+ * that forces Nano keys into full-length rows. */
 export function inventoryTrayLayout(config: HolderConfig) {
   const n = config.slots.length;
   const columns = n ? columnsFor(n, config.options.tray.columns) : 0;
@@ -222,20 +202,17 @@ export function inventoryTraySupports(config: HolderConfig, t = inventoryTrayLay
   return supports;
 }
 
-function trayScad(config: HolderConfig, t: ReturnType<typeof trayLayout>, inventory = false): string {
-  const args: unknown[] = [config.slots.map((s) => s.type), labels(config), t.xy, t.width, t.depth, t.height, t.scoopRadius, t.labelWidth];
-  if (inventory) args.push(config.options.tray.retention ?? true, config.options.tray.connection !== 'none', (config.options.tray.sideText ?? '').slice(0, 32), inventoryTraySupports(config));
-  args.push(keyLabelMetrics(config).scale);
-  if (inventory) args.push(config.options.tray.lid ?? false);
-  if (inventory && trayH20Enabled(config)) args.push(traySlideDirection(config.options.tray.slideDirection).angle);
-  return scadCall(inventory ? (traySnapEnabled(config) ? 'inventory_tray_snap' : trayH20Enabled(config) ? 'inventory_tray_h20' : 'inventory_tray') : 'tray', args);
+function trayScad(config: HolderConfig, t: ReturnType<typeof inventoryTrayLayout>): string {
+  const args: unknown[] = [config.slots.map((s) => s.type), labels(config), t.xy, t.width, t.depth, t.height, t.scoopRadius, t.labelWidth,
+    config.options.tray.retention ?? true, config.options.tray.connection !== 'none', (config.options.tray.sideText ?? '').slice(0, 32), inventoryTraySupports(config),
+    keyLabelMetrics(config).scale, config.options.tray.lid ?? false];
+  if (trayH20Enabled(config)) args.push(traySlideDirection(config.options.tray.slideDirection).angle);
+  return scadCall(traySnapEnabled(config) ? 'inventory_tray_snap' : trayH20Enabled(config) ? 'inventory_tray_h20' : 'inventory_tray', args);
 }
 
 /** Every part is a printable millimetre-space solid at Z=0. Assembly transforms
  * are separate from its SCAD source. Three.js only displays these generated meshes. */
 export function buildProject(config: HolderConfig): ProjectGeometry {
-  if (config.template === 'key_fit_tester') return buildKeyFitTester(config);
-  if (config.template === 'interface_tests') return buildFitTests(config.options.interfaceTests.kind);
   if (!config.slots.length) return { parts: [], keys: [], dimensions: zero() };
   const n = config.slots.length;
   const types = config.slots.map((s) => s.type);
@@ -273,7 +250,7 @@ export function buildProject(config: HolderConfig): ProjectGeometry {
       const h20 = trayH20Enabled(config);
       const gap = trayStackGap(config.options.tray.retention ?? true);
       const stackHeight = config.options.tray.connection !== 'none' || hasLid ? gap + (snap ? TRAY_SNAP.captureHeight : h20 ? H20_V7.pinHeight : TRAY_STACK.tongueHeight) : 0;
-      const parts = [part('tray', 'Inventory tray', trayScad(config, t, true), zero(), '#b5c6c4')];
+      const parts = [part('tray', 'Inventory tray', trayScad(config, t), zero(), '#b5c6c4')];
       const lidThickness = h20 ? H20_V7.lidThickness : TRAY_LID.thickness;
       const lidTop = t.height + gap + lidThickness;
       if (hasLid) {
@@ -285,7 +262,7 @@ export function buildProject(config: HolderConfig): ProjectGeometry {
         if (snap) parts.push(part('tray-lid', 'Tray lid', scadCall(percent === undefined ? 'tray_snap_lid_legacy' : 'tray_snap_lid', lidArgs), [0, 0, t.height + gap], '#597f91', zero(), [t.width + 8, 0, -(t.height + gap)]));
         else if (h20 || config.options.tray.lidStyle === 'minimal') {
           const module = h20 ? 'inventory_tray_h20_lid' + suffix : 'inventory_tray_lid_minimal' + (percent === undefined ? '' : '_percent');
-          parts.push(part('tray-lid', config.options.tray.lidStyle === 'minimal' ? 'Minimal material lid' : 'Regular lid', scadCall(module, lidArgs), [0, 0, t.height + gap], '#597f91', zero(), [t.width + 8, 0, -(t.height + gap)]));
+          parts.push(part('tray-lid', config.options.tray.lidStyle === 'minimal' ? 'Minimal lid' : 'Regular lid', scadCall(module, lidArgs), [0, 0, t.height + gap], '#597f91', zero(), [t.width + 8, 0, -(t.height + gap)]));
         } else parts.push(part('tray-lid', 'Tray lid', scadCall('inventory_tray_lid' + suffix, lidArgs), [0, 0, lidTop], '#597f91', [Math.PI, 0, 0], lidExplodeOffset(t.width, lidTop, lidThickness)));
       }
       return {
@@ -295,80 +272,11 @@ export function buildProject(config: HolderConfig): ProjectGeometry {
           hasLid ? gap + (snap ? TRAY_SNAP.lidThickness : lidThickness) : 0)],
       };
     }
-    case 'modular_rail': {
-      const endMargin = clamp(config.options.rail.endMargin ?? 5, 5, 30);
-      const parts = [part('rail', 'Rail base', scadCall('rail_base', [n, config.options.rail.mountingHoles, endMargin]))];
-      const keys: KeyPlacement[] = [];
-      config.slots.forEach((slot, i) => {
-        const x = (i - (n - 1) / 2) * 26;
-        const id = `cartridge-${i + 1}`;
-        parts.push(part(id, `Cartridge ${i + 1} — ${keyLabels[slot.type]}`, scadCall('cartridge', [slot.type, ls[i], keyLabelMetrics(config).scale]), [x, 0, 3], i % 2 ? '#87aeb7' : '#597f91', zero(), [0, 0, 10]));
-        if (slot.occupied) keys.push(keyPlacement(slot, x, 0, 16.6, false, id));
-      });
-      return { parts, keys, dimensions: [n * 26 + 2 * endMargin, 36, 16.6 + labelHeight] };
-    }
-    case 'travel_case': {
-      const t = trayLayout(config);
-      const h = t.height + 6.4 + clamp(config.options.case.headroom, 0, 15);
-      return {
-        parts: [
-          part('case-base', 'Case base', scadCall('case_base', [t.width, t.depth, h])),
-          part('case-insert', 'Case insert', trayScad(config, t), [0, 0, 2.4], '#b5c6c4', zero(), [0, 0, 8]),
-          part('case-lid', 'Case lid', scadCall('case_lid', [t.width, t.depth, config.options.case.title.slice(0, 32)]), [0, 0, h + 2.4], '#36566a', [Math.PI, 0, 0], [0, 0, 30]),
-        ],
-        keys: placements(config.slots, t.xy, t.height, true, 'case-insert', [0, 0, 2.4]),
-        dimensions: [t.width + 8, t.depth + 8, h + 2.4],
-      };
-    }
-    case 'grid_organizer': return buildGrid(config);
   }
-}
-
-function buildGrid(config: HolderConfig): ProjectGeometry {
-  const mode = config.options.grid.mode;
-  const extraHeight = clamp(config.options.grid.extraHeight ?? 0, 0, 15);
-  const groups = mode === 'mixed'
-    ? [{ flat: false, slots: config.slots.filter((s) => s.type !== 'CK' && s.type !== 'CI') }, { flat: true, slots: config.slots.filter((s) => s.type === 'CK' || s.type === 'CI') }]
-    : [{ flat: mode === 'flat', slots: config.slots }];
-  const tiles: { flat: boolean; slots: Slot[] }[] = [];
-  for (const group of groups) {
-    const capacity = group.flat ? 2 : 4;
-    for (let i = 0; i < group.slots.length; i += capacity) {
-      const slots = group.slots.slice(i, i + capacity);
-      tiles.push({ flat: group.flat, slots });
-    }
-  }
-  const tileColumns = Math.ceil(Math.sqrt(tiles.length));
-  const tileRows = Math.ceil(tiles.length / tileColumns);
-  const parts: PartSpec[] = [];
-  const keys: KeyPlacement[] = [];
-  tiles.forEach((tile, i) => {
-    // Adjacent parts remain on the same 42mm baseplate grid, with a 0.5mm gap.
-    const offset: Vec3 = [(i % tileColumns - (tileColumns - 1) / 2) * 84, (Math.floor(i / tileColumns) - (tileRows - 1) / 2) * 84, 0];
-    const xy: Point[] = tile.slots.map((_, j) => [(j % 2 - 0.5) * 42, tile.flat ? 4 : (Math.floor(j / 2) - 0.5) * 42 + 3]);
-    const id = `grid-${tile.flat ? 'flat' : 'upright'}-${i + 1}`;
-    parts.push(part(id, `${tile.flat ? 'Flat' : 'Upright'} grid tile ${i + 1}`, scadCall('grid_tile', [tile.slots.map((s) => s.type), labels(config, tile.slots), xy, 2, 2, tile.flat, extraHeight, keyLabelMetrics(config).scale]), offset, tile.flat ? '#87aeb7' : '#36566a', zero(), [0, 0, 5]));
-    keys.push(...placements(tile.slots, xy, (tile.flat ? 13 : 15) + extraHeight, tile.flat, id, offset));
-  });
-  const height = Math.max(...tiles.map((t) => (t.flat ? 13 : 15) + extraHeight + (labels(config, t.slots).some((s) => s.trim().length > 0) ? 0.35 : 0)));
-  return { parts, keys, dimensions: [tileColumns * 84 - 0.5, tileRows * 84 - 0.5, height] };
-}
-
-function buildKeyFitTester(config: HolderConfig): ProjectGeometry {
-  const options = config.options.tester;
-  const count = options.samples;
-  const offsets = fitOffsets(options);
-  const offsetLabels = offsets.map(formatFitOffset);
-  const headings = { A: 'USB-A / mm per side', C: 'USB-C / mm per side', AN: 'A NANO / mm per side', CN: 'C NANO / mm per side' };
-  const height = keyDimensions[options.profile].socketDepth + 3;
-  return {
-    parts: [part('key-fit-tester', `${keyLabels[options.profile]} socket fit tester`, scadCall('key_fit_tester', [options.profile, offsets, offsetLabels, headings[options.profile]]))],
-    keys: [], dimensions: [(count - 1) * 22 + 24, 28, height + 0.35],
-  };
 }
 
 export function buildTraySnapTest(engagement: number = TRAY_SNAP.engagement): ProjectGeometry {
-  if (![.1, .2, .3].includes(engagement)) throw new Error("Enclosure snap engagement must be 0.1, 0.2 or 0.3 mm");
+  if (![.1, .2, .3].includes(engagement)) throw new Error("Snap-fit engagement must be 0.1, 0.2 or 0.3 mm");
   const { couponWidth: w, couponDepth: d, couponHeight: h, gap } = TRAY_SNAP;
   const pitch = h + gap;
   return {
@@ -377,41 +285,6 @@ export function buildTraySnapTest(engagement: number = TRAY_SNAP.engagement): Pr
       part('fit-tray-snap-upper', 'Snap-fit test lid', scadCall('tray_snap_lid', [w, d, `${engagement.toFixed(1)} mm`, 45, 0]), [0, 0, pitch], '#87aeb7', zero(), [w + 8, 0, -pitch]),
     ],
     keys: [], dimensions: [w, d, pitch + TRAY_SNAP.lidThickness],
-  };
-}
-
-export function buildFitTests(kind: HolderConfig['options']['interfaceTests']['kind'] = 'all'): ProjectGeometry {
-  if (kind === 'tray_h20') return buildTrayH20Test();
-  if (kind === 'tray_snap') return buildTraySnapTest();
-  if (kind === 'grid') return {
-    parts: [part('fit-grid', 'Gridfinity 1×1 fit test', scadCall('grid_fit_test', []))],
-    keys: [], dimensions: [41.5, 41.5, 7],
-  };
-  if (kind === 'rail') return {
-    parts: [
-      part('fit-rail', 'Rail fit-test segment', scadCall('rail_base', [1, false])),
-      part('fit-cartridge', 'Rail fit-test cartridge', scadCall('cartridge', ['C', '']), [0, 0, 3], '#87aeb7', zero(), [0, 0, 10]),
-    ],
-    keys: [], dimensions: [36, 36, 16.6],
-  };
-  if (kind === 'lid') return {
-    parts: [
-      part('fit-case-corner', 'Case corner fit test', scadCall('lid_fit_base', []), [12, 12, 0]),
-      part('fit-lid-corner', 'Lid corner fit test', scadCall('lid_fit_lid', []), [12, 12, 17.4], '#87aeb7', [Math.PI, 0, 0], [0, 0, 18]),
-    ],
-    keys: [], dimensions: [24, 24, 17.4],
-  };
-  return {
-    parts: [
-      part('fit-grid', 'Gridfinity 1×1 fit test', scadCall('grid_fit_test', []), [-75, 0, 0]),
-      part('fit-rail', 'Rail fit-test segment', scadCall('rail_base', [1, false]), [-20, 0, 0]),
-      part('fit-cartridge', 'Rail fit-test cartridge', scadCall('cartridge', ['C', '']), [-20, 0, 3], '#87aeb7', zero(), [0, 0, 10]),
-      part('fit-case-corner', 'Case corner fit test', scadCall('lid_fit_base', []), [70, 10, 0]),
-      part('fit-lid-corner', 'Lid corner fit test', scadCall('lid_fit_lid', []), [70, 10, 17.4], '#87aeb7', [Math.PI, 0, 0], [0, 0, 18]),
-      ...buildTraySnapTest().parts.map((p) => ({ ...p, position: [p.position[0] + 120, p.position[1], p.position[2]] as Vec3 })),
-      ...buildTrayH20Test().parts.map(p => ({ ...p, position: [p.position[0] + 190, p.position[1], p.position[2]] as Vec3 })),
-    ],
-    keys: [], dimensions: [305.75, Math.max(41.5, TRAY_SNAP.couponDepth), Math.max(21, TRAY_SNAP.couponHeight + TRAY_SNAP.gap + TRAY_SNAP.lidThickness)],
   };
 }
 

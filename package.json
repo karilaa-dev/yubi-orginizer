@@ -1,5 +1,5 @@
 {
-  "name": "yubikey-organizer",
+  "name": "yubi-orginizer",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -31,7 +31,7 @@
     "vite-plugin-pwa": "^1.2.0",
     "vitest": "^4.1.11"
   },
-  "description": "Design and export printable YubiKey organizers locally in your browser.",
+  "description": "yubi-orginizer: design and export printable YubiKey organizers locally in your browser.",
   "engines": {
     "node": ">=22.12.0"
   }

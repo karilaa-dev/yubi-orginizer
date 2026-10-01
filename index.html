@@ -2,12 +2,23 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#f6f7f9" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f5f6f4" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#10171b" media="(prefers-color-scheme: dark)" />
+    <meta name="apple-mobile-web-app-title" content="yubi-orginizer" />
     <meta name="description" content="A place for every key. Create custom, 3D-printable YubiKey organizers privately in your browser, online or offline." />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
-    <title>Keyform — YubiKey Organizer</title>
+    <title>yubi-orginizer — YubiKey organizer designer</title>
+    <script>
+      // Apply the stored theme before the first paint (src/main.ts keeps it in sync afterwards).
+      try {
+        var prefs = localStorage.getItem('yubi-orginizer.display.v1') || localStorage.getItem('yubikey-organizer.display.v1');
+        var theme = prefs && JSON.parse(prefs).theme;
+        if (theme !== 'light' && theme !== 'dark') theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        document.documentElement.dataset.theme = theme;
+      } catch (error) { /* main.ts applies the theme */ }
+    </script>
   </head>
   <body>
     <div id="app"></div>
