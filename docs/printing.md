@@ -4,7 +4,8 @@ Export models in millimeters at 100% scale. Each part rests on Z=0 in its intend
 print orientation; preview assembly/explode transforms do not alter exports.
 Reference keys are never included in printable files.
 
-3MF exports contain separate objects and per-object 5% infill / Arachne settings
+3MF exports contain separate objects with 5% infill, Arachne walls and Outer brim
+applied to each object. Project-wide print settings are not included. These settings work
 for Bambu Studio and OrcaSlicer. Open as a project and choose your printer and
 filament. Other readers may ignore slicer-specific settings. Inspect the slice
 before printing. Multi-part STL and SCAD ZIPs include the project file.
@@ -15,11 +16,19 @@ Desktop OpenSCAD needs Liberation Sans and Text Metrics for matching lettering.
 
 **Standalone** keeps the optional lift-off lid. **Stackable** adds locating
 rims for trays that lift apart. **Slide-lock** adds the H20/V7 pins and guides,
-with matching underside receivers. A lid can be added independently. For stacked
-trays with different contents, use **New matching layer** in the project menu, or
-choose **Size › Fixed size** on the larger layout before removing keys, or
-**Size › Match project** on the smaller one. Use identical outside dimensions and the same connection on every layer.
-An undersized fixed size blocks exports until corrected; key pockets are never
+with matching underside receivers. A lid can be added independently and always
+stays above the top tray, including when trays are added, reordered or removed.
+Layers are listed from top to bottom, with the lid first. For stacked
+trays with different contents, use **Layers › Add tray**. The set shares its
+footprint, tray height, connection and slide direction. Fit to keys computes a common
+minimum footprint for all layers; fixed dimensions are checked against every layer. Download always offers the whole set. Toggle trays and lids independently in
+**Layers to download**; changing the selection does not change the editor preview.
+Horizontal and vertical keys can share a tray; rotating a key also rotates its
+printed pocket, label, scoop and retention features.
+Arrange compactly tries rotations and positions with at least the
+configured clearance around the full key envelopes. This is a bounded packing
+search, not a guarantee of the mathematical minimum.
+A change exceeding a fixed size offers Resize or Cancel before autosaving; key pockets are never
 scaled.
 
 For [H20/V7 slide-lock](h20-slide-lock.md), keep pins upward and print slide-lock

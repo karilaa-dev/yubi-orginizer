@@ -4,13 +4,14 @@
  * `sizePanelMarkup()` renders the Size and Spacing sections from SIZE_SECTIONS;
  * `settingsPanelMarkup()` renders the <details> groups from TRAY_GROUPS / DOCK_GROUPS
  * (the organizer-type switch is at the top of the Keys tab: `organizerTypeMarkup()`). After every change `syncSettingsPanel()` applies the pure
- * settings model in place to both tabs (and Columns in the Keys tab): visibility, disabled
+ * settings model in place to both tabs: visibility, disabled
  * state, minimums, hints, summaries, modified dots, error marks and the Stacking / Size
  * readouts. Values the user is typing are kept.
  */
 import { FRONT_TEXT_PERCENT, TEMPLATES } from '../config';
 import { frontTextFit, inventoryTrayLayout } from '../geometry';
 import { icon } from '../icons';
+import { keyLabelPercent } from '../text-size';
 import type { HolderConfig, TemplateId, TrayConnection } from '../types';
 import { esc, fmt } from './dom';
 import {
@@ -24,12 +25,14 @@ import {
 } from './settings-model';
 
 export const DOCK_NOTICE = 'Dock fit is still being tuned. Print a one-key dock first.';
+export const ORGANIZER_TYPE_LOCK_HINT = 'Projects with multiple tray layers must use Inventory tray. Remove extra trays to change the organizer type.';
 
 export const COLUMN_OPTIONS = [0, 1, 2, 3, 4, 5, 6].map(n => ({ value: n, label: n === 0 ? 'Auto' : String(n) }));
 
 export interface SettingsMarkupOptions {
   /** Groups rendered open. */
   open: ReadonlySet<string>;
+  lid?: boolean;
 }
 
 function group(id: GroupId, title: string, open: boolean, body: string): string {
@@ -51,7 +54,7 @@ function organizerType(template: TemplateId): string {
   return `<fieldset class="segmented-field type-field"><legend>Organizer type</legend><div class="segmented">${options}</div></fieldset>`;
 }
 
-function trayGroups(config: HolderConfig, open: ReadonlySet<string>): string {
+export function trayGroups(config: HolderConfig, open: ReadonlySet<string>, panel: 'settings' | 'layers' | 'lid' = 'settings'): string {
   const t = config.options.tray;
   const connections = CONNECTION_OPTIONS.filter(o => o.value !== 'snap_fit' || t.connection === 'snap_fit');
   const cards = connections.map(o => {
@@ -71,8 +74,7 @@ function trayGroups(config: HolderConfig, open: ReadonlySet<string>): string {
       + `<div id="stacking-callout" class="callout stacking-callout" hidden>${icon('layers')}<div class="callout-body"><p id="stacking-callout-text"></p>
           <div class="callout-actions"><button type="button" class="button secondary compact" data-action="lock-footprint" hidden></button>`
       + `<button type="button" class="button secondary compact" data-action="new-layer">${icon('plus')}New matching layer</button></div></div></div>`,
-    lid: switchField({ id: 'tray.lid', label: 'Add lid', checked: t.lid })
-      + segmentedField({ id: 'tray.lidStyle', legend: 'Style', options: [{ value: 'regular', label: 'Regular' }, { value: 'minimal', label: 'Minimal' }], value: t.lidStyle })
+    lid: segmentedField({ id: 'tray.lidStyle', legend: 'Style', options: [{ value: 'regular', label: 'Regular' }, { value: 'minimal', label: 'Minimal' }], value: t.lidStyle })
       + '<p id="lid-style-note" class="field-hint" hidden></p>'
       + textSettingField({ id: 'tray.lidText', label: 'Lid text', value: t.lidText },
         inlineSliderField({ id: 'tray.lidTextPercent', label: 'Size', spoken: 'Lid text size', value: t.lidTextPercent ?? 100, min: 0.1, max: 100, step: 0.1, unit: '%', disabled: t.lidTextPercent === undefined })
@@ -81,7 +83,8 @@ function trayGroups(config: HolderConfig, open: ReadonlySet<string>): string {
       + switchField({ id: 'tray.retention', label: 'Retention tabs', checked: t.retention, badge: 'Untested' })
       + textSettingField({ id: 'tray.sideText', label: 'Front text', value: t.sideText }, frontSize),
   };
-  return TRAY_GROUPS.map(g => group(g.id, g.title, open.has(g.id), bodies[g.id])).join('');
+  return TRAY_GROUPS.filter(g => panel === 'layers' ? g.id === 'stacking' : panel === 'lid' ? g.id === 'lid' : g.id === 'pockets')
+    .map(g => group(g.id, g.title, open.has(g.id), bodies[g.id])).join('');
 }
 
 /** Front text Size: percent of the largest text that fits the front wall. */
@@ -142,6 +145,7 @@ export function sizePanelMarkup(config: HolderConfig, options: SizeMarkupOptions
       + `<div class="dimension-fields">${numberField({ id: 'tray.width', label: 'Width', value: layout.width || 80, min: 20, max: 1000, step: 0.01, describedBy: 'tray-size-readout' })}`
       + `${numberField({ id: 'tray.depth', label: 'Depth', value: layout.depth || 80, min: 20, max: 6000, step: 0.01, describedBy: 'tray-size-readout' })}</div>`
       + '<button type="button" id="grow-footprint" class="button secondary compact grow-button" data-action="grow-footprint" hidden></button>'
+      + '<p class="field-hint">Width, depth and height apply to every tray layer.</p>'
       + sliderField({ id: 'tray.height', label: 'Height', value: Math.max(t.height, minHeight), min: minHeight, max: 20, step: 0.1 }))
     + section('spacing', titles.spacing, sliderField({ id: 'tray.spacing', label: 'Column spacing', value: t.spacing, min: 24, max: 42, step: 0.5 })
       + sliderField({ id: 'tray.rowGap', label: 'Row spacing', value: t.rowGap, min: 2, max: 40, step: 0.5 })
@@ -159,7 +163,17 @@ export function organizerTypeMarkup(template: TemplateId, dockNotice: boolean): 
 
 export function settingsPanelMarkup(config: HolderConfig, options: SettingsMarkupOptions): string {
   const dock = config.template === 'desktop_dock';
-  return `<div class="groups">${dock ? dockGroups(config, options.open) : trayGroups(config, options.open)}</div>`;
+  if (options.lid) return `<div class="groups">${trayGroups(config, new Set([...options.open, 'lid']), 'lid')}</div>`;
+  const columns = dock ? config.options.dock.columns : config.options.tray.columns;
+  const columnsId = dock ? 'dock.columns' : 'tray.columns';
+  return `<div class="panel-section layout-settings">
+    ${inlineSegmentedField({ id: columnsId, legend: 'Columns', options: COLUMN_OPTIONS, value: columns, numeric: true, className: 'columns-field' })}
+    <div class="text-setting">
+      ${switchField({ id: 'labels', label: 'Print labels', checked: config.labels })}
+      <div class="text-options label-size"${config.labels ? '' : ' hidden'}>${inlineSliderField({ id: 'labelSize', label: 'Size', spoken: 'Label size', value: keyLabelPercent(config.labelSize), min: 37.5, max: 100, step: 2.5, unit: '%' })}</div>
+      <p id="labels-off-note" class="field-hint"${config.labels ? ' hidden' : ''}>Labels won't be printed.</p>
+    </div>
+  </div><div class="groups">${dock ? dockGroups(config, options.open) : trayGroups(config, options.open)}</div>`;
 }
 
 /* ───────────── In-place sync ───────────── */
@@ -196,9 +210,9 @@ export interface SyncMemory {
  * Applies the settings model to the rendered panel. Errors of controls that are hidden or
  * disabled are dropped from `errors` (and their inputs reset), so they never block generation.
  */
-export function syncSettingsPanel(root: HTMLElement, config: HolderConfig, errors: Map<string, string>, memory: SyncMemory, match?: MatchState): TraySettingsState | DockSettingsState {
+export function syncSettingsPanel(root: HTMLElement, config: HolderConfig, errors: Map<string, string>, memory: SyncMemory, match?: MatchState, project: HolderConfig = config): TraySettingsState | DockSettingsState {
   const compute = () => config.template === 'inventory_tray'
-    ? traySettingsState(config, new Set(errors.keys()), match)
+    ? traySettingsState(config, new Set(errors.keys()), match, project)
     : dockSettingsState(config, new Set(errors.keys()));
   let state = compute();
   const controls = state.controls as Record<string, ControlState>;
@@ -227,7 +241,7 @@ export function syncSettingsPanel(root: HTMLElement, config: HolderConfig, error
   const derived = config.template === 'inventory_tray' ? ['tray.height', 'tray.margin', 'tray.width', 'tray.depth', 'tray.sideTextPercent'] : ['dock.titlePercent'];
   for (const id of derived) {
     if (errors.has(id) || isFocused(root, id)) continue;
-    const value = controlValue(config, id);
+    const value = 'stacking' in state && id === 'tray.width' ? state.size.width : 'stacking' in state && id === 'tray.depth' ? state.size.depth : controlValue(config, id);
     if (typeof value !== 'number') continue;
     for (const input of root.querySelectorAll<HTMLInputElement>(`[data-option="${id}"]`)) {
       if (input !== document.activeElement && input.value !== numberValue(value)) input.value = numberValue(value);

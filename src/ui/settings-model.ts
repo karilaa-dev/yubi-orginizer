@@ -5,13 +5,15 @@
  * and then applies traySettingsState() / dockSettingsState() in place after every change.
  */
 import { defaultConfig } from '../config';
-import { dockLayout, inventoryTrayLayout, trayFootprintError } from '../geometry';
+import { dockLayout, inventoryTrayLayout } from '../geometry';
+import { traySetLayout } from '../geometry/layers';
+import { projectKeyCount, projectLayers } from '../layers';
 import { H20_V7 } from '../geometry/tray-h20';
 import { TRAY_SNAP } from '../geometry/tray-snap';
 import { TRAY_SLIDE_DIRECTIONS, traySlideDirection } from '../tray-slide';
 import type { HolderConfig, TemplateId, TrayConnection } from '../types';
 
-export type Panel = 'keys' | 'size' | 'settings';
+export type Panel = 'keys' | 'size' | 'settings' | 'layers';
 export type TrayGroupId = 'stacking' | 'lid' | 'pockets';
 export type DockGroupId = 'text';
 export type GroupId = TrayGroupId | DockGroupId;
@@ -20,7 +22,7 @@ export type SizeSectionId = 'size' | 'spacing';
 export const TRAY_CONTROLS = [
   'tray.columns', 'tray.spacing', 'tray.rowGap',
   'tray.connection', 'tray.slideDirection',
-  'tray.lid', 'tray.lidStyle', 'tray.lidText', 'tray.lidTextPercent', 'tray.lidTextRotation',
+  'tray.lidStyle', 'tray.lidText', 'tray.lidTextPercent', 'tray.lidTextRotation',
   'tray.sizeLocked', 'tray.width', 'tray.depth', 'tray.height', 'tray.margin',
   'tray.scoop', 'tray.retention', 'tray.sideText', 'tray.sideTextPercent',
 ] as const;
@@ -32,7 +34,7 @@ export interface GroupDefinition<G extends string, C extends string> { id: G; ti
 /** Tray settings tab. */
 export const TRAY_GROUPS: readonly GroupDefinition<TrayGroupId, TrayControlId>[] = [
   { id: 'stacking', title: 'Stacking', controls: ['tray.connection', 'tray.slideDirection'] },
-  { id: 'lid', title: 'Lid', controls: ['tray.lid', 'tray.lidStyle', 'tray.lidText', 'tray.lidTextPercent', 'tray.lidTextRotation'] },
+  { id: 'lid', title: 'Lid', controls: ['tray.lidStyle', 'tray.lidText', 'tray.lidTextPercent', 'tray.lidTextRotation'] },
   { id: 'pockets', title: 'Pockets & text', controls: ['tray.scoop', 'tray.retention', 'tray.sideText', 'tray.sideTextPercent'] },
 ];
 /** Dock settings tab. */
@@ -56,13 +58,14 @@ export const DEFAULT_OPEN_GROUPS: Record<TemplateId, readonly GroupId[]> = {
   desktop_dock: ['text'],
 };
 
-/** data-option / error ids shown in the Keys tab: labels, key label inputs and Columns. */
+/** Per-key label errors belong to the Keys tab; print settings belong to Settings. */
 export const isKeysControl = (id: string): boolean =>
-  id === 'labels' || id === 'labelSize' || id.startsWith('label-') || id === 'tray.columns' || id === 'dock.columns';
+  id.startsWith('label-');
 
 /** The tab that shows a control. */
 export function panelOfControl(template: TemplateId, control: string): Panel {
   if (isKeysControl(control)) return 'keys';
+  if (template === 'inventory_tray' && TRAY_GROUPS.find(g => g.id === 'stacking')!.controls.includes(control as TrayControlId)) return 'layers';
   return SIZE_SECTIONS[template].some(s => s.controls.includes(control)) ? 'size' : 'settings';
 }
 
@@ -149,16 +152,17 @@ function state(visible: boolean, hint = '', disabled = false, min?: number): Con
   return { visible, disabled: visible && disabled, hint: visible ? hint : '', ...(min !== undefined ? { min } : {}) };
 }
 
-export function traySettingsState(config: HolderConfig, errors: ReadonlySet<string> = new Set(), match?: MatchState): TraySettingsState {
+export function traySettingsState(config: HolderConfig, errors: ReadonlySet<string> = new Set(), match?: MatchState, project: HolderConfig = config): TraySettingsState {
   const t = config.options.tray, d = defaultConfig().options.tray;
-  const layout = inventoryTrayLayout(config);
-  const hasKeys = config.slots.length > 0;
+  const layout = { ...inventoryTrayLayout(config), ...traySetLayout(project) };
+  const hasKeys = projectKeyCount(project) > 0;
+  const many = projectLayers(project).length > 1;
   const snap = t.connection === 'snap_fit', h20 = t.connection === 'h20_slide_v7', stacked = t.connection !== 'none';
   const lidText = t.lidText.trim().length > 0;
   const legacyLidSize = t.lidTextPercent === undefined;
   const fixed = t.footprint !== null;
   const choice = footprintChoice(config, match);
-  const tooSmall = hasKeys && trayFootprintError(config) !== undefined;
+  const tooSmall = layout.tooSmall;
   const width = layout.width, depth = layout.depth, rw = layout.requiredWidth, rd = layout.requiredDepth;
   const direction = traySlideDirection(t.slideDirection);
 
@@ -166,7 +170,6 @@ export function traySettingsState(config: HolderConfig, errors: ReadonlySet<stri
     'tray.columns': state(true), 'tray.spacing': state(true), 'tray.rowGap': state(true),
     'tray.connection': state(true),
     'tray.slideDirection': state(h20, 'Seen from above. Front is the front-text edge. Use the same direction on every layer.'),
-    'tray.lid': state(true, stacked ? 'On a stack, add the lid to the top layer only.' : ''),
     'tray.lidStyle': state(t.lid && !snap, t.lidStyle === 'minimal' ? 'Thin ribbed panel. Uses less filament.' : h20 ? 'Rounded border with thumb grips.' : 'Solid panel.'),
     'tray.lidText': state(t.lid),
     'tray.lidTextPercent': state(t.lid && lidText, legacyLidSize ? 'Available after the preview updates.' : '', legacyLidSize),
@@ -186,8 +189,8 @@ export function traySettingsState(config: HolderConfig, errors: ReadonlySet<stri
   const matched = match && match !== 'choosing' && choice === 'match' ? match : undefined;
   const readout = choice === 'match' && !matched ? 'Choose a tray to copy its width and depth.'
     : !fixed
-    ? (hasKeys ? `${fmt(width)} × ${fmt(depth)} mm, fits your keys` : 'Add keys to see the size.')
-    : tooSmall ? `Too small. These keys need at least ${fmt(rw)} × ${fmt(rd)} mm.`
+    ? (hasKeys ? `${fmt(width)} × ${fmt(depth)} mm, fits ${many ? 'all layers' : 'your keys'}` : 'Add keys to see the size.')
+    : tooSmall ? `Too small. ${hasKeys ? 'These keys need' : 'This connection needs'} at least ${fmt(rw)} × ${fmt(rd)} mm.`
     : matched ? `${fmt(width)} × ${fmt(depth)} mm, same as ${quote(matched.name, 28)}.`
     : hasKeys ? `Keys need at least ${fmt(rw)} × ${fmt(rd)} mm.` : '';
 
@@ -218,8 +221,8 @@ export function traySettingsState(config: HolderConfig, errors: ReadonlySet<stri
     lidStyleNote: t.lid && snap ? 'Snap-fit lids use a fixed design.' : '',
     stacking: {
       stacked,
-      callout: !stacked ? '' : fixed ? `Every layer uses ${fmt(width)} × ${fmt(depth)} mm.` : 'Stacked layers must be the same size.',
-      lockLabel: stacked && !fixed && hasKeys ? `Fix size at ${fmt(width)} × ${fmt(depth)} mm` : null,
+      callout: !stacked ? '' : many ? `Every layer uses ${fmt(width)} × ${fmt(depth)} mm. Change the shared footprint in Size.` : fixed ? `Every layer uses ${fmt(width)} × ${fmt(depth)} mm.` : 'New layers share this footprint. Fit to keys sizes the whole set.',
+      lockLabel: stacked && !fixed && hasKeys && !many ? `Fix size at ${fmt(width)} × ${fmt(depth)} mm` : null,
     },
     size: { fixed, choice, width, depth, height: layout.height, requiredWidth: rw, requiredDepth: rd, tooSmall, readout, grow },
   };

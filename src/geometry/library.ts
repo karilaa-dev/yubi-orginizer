@@ -132,16 +132,17 @@ module dock(ks,ls,xy,w,d,h,title="",label_scale=1,title_percent=undef) {
   }
 }
 // Shared inventory-tray base: slab, calibrated pockets, finger scoops, labels.
-module tray(ks,ls,xy,w,d,h=8.6,scoop_r=5,label_width=23,label_scale=1) {
+module tray_slot(xy,i,rotations=[]) { translate([xy[i][0],xy[i][1],0]) rotate([0,0,is_undef(rotations[i])?0:rotations[i]]) children(); }
+module tray(ks,ls,xy,w,d,h=8.6,scoop_r=5,label_width=23,label_scale=1,rotations=[]) {
   union() {
     difference() {
       slab(w,d,h,4);
-      for(i=[0:len(ks)-1]) translate([xy[i][0],xy[i][1],0]) {
+      if(len(ks)>0) for(i=[0:len(ks)-1]) tray_slot(xy,i,rotations) {
         body_cut(ks[i],h);
         scoop(ks[i],h,scoop_r);
       }
     }
-    for(i=[0:len(ks)-1]) label(ls[i],xy[i][0],xy[i][1]-flat_label_distance(ks[i],label_scale),h,label_width,2.7*label_scale);
+    if(len(ks)>0) for(i=[0:len(ks)-1]) tray_slot(xy,i,rotations) label(ls[i],0,-flat_label_distance(ks[i],label_scale),h,label_width,2.7*label_scale);
   }
 }
 // Long cantilevers bend in the XY layer plane. Both sides are relieved through
@@ -214,17 +215,17 @@ module tray_stack_pillars(points,h,gap=${TRAY_STACK.gap}) {
   for(p=points) translate([p[0],p[1],h-eps])
     cylinder(d=${TRAY_STACK_PILLAR.diameter},h=gap+eps,$fn=48);
 }
-module inventory_tray(ks,ls,xy,w,d,h=8.6,scoop_r=6,label_width=23,retention=true,stackable=false,side_text="",support_xy=[],label_scale=1,has_lid=false,side_text_percent=undef) {
+module inventory_tray(ks,ls,xy,w,d,h=8.6,scoop_r=6,label_width=23,retention=true,stackable=false,side_text="",support_xy=[],label_scale=1,has_lid=false,side_text_percent=undef,rotations=[]) {
   gap=tray_stack_gap(retention);
   union() {
     difference() {
-      tray(ks,ls,xy,w,d,h,scoop_r,label_width,label_scale);
-      for(i=[0:len(ks)-1]) if(ks[i]=="CI") translate([xy[i][0],xy[i][1],0]) ci_inventory_reversible_cut(h);
-      if(retention) for(i=[0:len(ks)-1]) translate([xy[i][0],xy[i][1],0]) tray_retention_relief(ks[i],h);
+      tray(ks,ls,xy,w,d,h,scoop_r,label_width,label_scale,rotations);
+      if(len(ks)>0) for(i=[0:len(ks)-1]) if(ks[i]=="CI") tray_slot(xy,i,rotations) ci_inventory_reversible_cut(h);
+      if(retention && len(ks)>0) for(i=[0:len(ks)-1]) tray_slot(xy,i,rotations) tray_retention_relief(ks[i],h);
       if(stackable) tray_stack_sockets(w,d);
       front_title_cut(side_text,w,d,h,side_text_percent);
     }
-    if(retention) for(i=[0:len(ks)-1]) translate([xy[i][0],xy[i][1],0]) tray_retention_lips(ks[i],h);
+    if(retention && len(ks)>0) for(i=[0:len(ks)-1]) tray_slot(xy,i,rotations) tray_retention_lips(ks[i],h);
     if(stackable||has_lid) {
       tray_stack_supports(w,d,h,true,gap);
       tray_stack_pillars(support_xy,h,gap);
@@ -233,11 +234,11 @@ module inventory_tray(ks,ls,xy,w,d,h=8.6,scoop_r=6,label_width=23,retention=true
 }
 // This actuator belongs to the lower tray. Its well opens upward, while
 // the next tray or lid has only narrow, sloped passive receivers underneath.
-module inventory_tray_snap(ks,ls,xy,w,d,h=${TRAY_SNAP.minimumHeight},scoop_r=6,label_width=23,retention=true,stackable=true,side_text="",support_xy=[],label_scale=1,has_lid=false,side_text_percent=undef) {
+module inventory_tray_snap(ks,ls,xy,w,d,h=${TRAY_SNAP.minimumHeight},scoop_r=6,label_width=23,retention=true,stackable=true,side_text="",support_xy=[],label_scale=1,has_lid=false,side_text_percent=undef,rotations=[]) {
   gap=tray_stack_gap(retention);
   union() {
     difference() {
-      inventory_tray(ks,ls,xy,w,d,h,scoop_r,label_width,retention,false,side_text,[],label_scale,false,side_text_percent);
+      inventory_tray(ks,ls,xy,w,d,h,scoop_r,label_width,retention,false,side_text,[],label_scale,false,side_text_percent,rotations);
       tray_snap_sockets(w,d);
       tray_snap_body_relief(w,d,h,gap);
       tray_snap_pry_notches(w,d);

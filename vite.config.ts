@@ -35,7 +35,24 @@ export default defineConfig({
   // Pre-bundling rewrites the package's `new URL(`./${path}`, import.meta.url)`
   // into a glob over the deps cache, which breaks the render worker in dev.
   optimizeDeps: { exclude: ['@lofcz/openscad-wasm'] },
-  plugins: [VitePWA({
+  plugins: [{
+    // Reusing a preview port must not keep serving a previously installed build.
+    // This route exists only in the dev server; it never changes saved project data.
+    name: 'retire-preview-worker-in-dev',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (req.url?.split('?')[0] !== `${base}sw.js`) { next(); return; }
+        res.setHeader('Content-Type', 'application/javascript');
+        res.setHeader('Cache-Control', 'no-store');
+        res.end(`self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', event => event.waitUntil((async () => {
+  await self.registration.unregister();
+  for (const client of await self.clients.matchAll({ type: 'window' })) await client.navigate(client.url);
+})()));`);
+      });
+    },
+  }, VitePWA({
     registerType: 'prompt',
     injectRegister: false,              // src/pwa.ts registers `${BASE_URL}sw.js` itself
     manifest: {

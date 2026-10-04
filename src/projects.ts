@@ -1,5 +1,6 @@
 import { DISPLAY_KEY as LEGACY_DISPLAY_KEY, STORAGE_KEY as LEGACY_CONFIG_KEY, TEMPLATES, defaultConfig, parseConfig, validateConfig } from './config';
-import type { HolderConfig, TemplateId } from './types';
+import { appendLayer, projectLayers } from './layers';
+import type { HolderConfig, TemplateId, TrayLayer } from './types';
 
 /* ───────────────────────── Storage keys ───────────────────────── */
 
@@ -271,41 +272,23 @@ export function matchingLayerName(sourceName: string, taken: Iterable<string>): 
 }
 
 export interface MatchingLayerResult {
-  /** The source after the change (fixed footprint, lid possibly moved). */
   source: ProjectRecord;
-  /** The new, empty layer. */
-  layer: ProjectRecord;
-  /** Config of the source before the change, for Undo. */
+  layer: TrayLayer;
+  layerIndex: number;
   previousSourceConfig: HolderConfig;
 }
-/**
- * Creates an empty inventory-tray layer that stacks on `sourceId`: same footprint, connection,
- * slide direction, height, margins, layout, pockets and label settings; no keys. A source that
- * fits its keys is first switched to a fixed footprint of `footprint` (its current size), so the
- * geometry of the source does not change. With `moveLid`, the lid moves to the new (top) layer.
- */
+/** Add a matching tray to the same project in a single revision-checked storage write. */
 export function createMatchingLayer(
   storage: ProjectStorage, sourceId: string,
-  options: { footprint: { width: number; depth: number }; moveLid: boolean; name?: string },
+  options: { footprint: { width: number; depth: number }; name?: string; sourceIndex?: number },
   now = new Date(),
 ): MatchingLayerResult {
   const source = requireLive(storage, sourceId);
-  if (source.config.template !== 'inventory_tray') throw new ProjectStoreError('invalid', 'Matching layers are only available for inventory trays.');
   const previousSourceConfig = structuredClone(source.config);
-  const nextSource = structuredClone(source.config);
-  const tray = nextSource.options.tray;
-  tray.footprint = tray.footprint ?? { width: options.footprint.width, depth: options.footprint.depth };
-  const hadLid = tray.lid;
-  if (options.moveLid && hadLid) tray.lid = false;
-  const layerConfig = structuredClone(nextSource);
-  layerConfig.slots = [];
-  layerConfig.options.tray.lid = options.moveLid && hadLid;
-  const name = options.name === undefined ? matchingLayerName(source.name, liveNames(storage)) : normalizeProjectName(options.name);
-  const layer = createProject(storage, { config: layerConfig, name }, now);
-  let updated: ProjectRecord;
-  try { updated = updateProjectConfig(storage, source.id, nextSource, { baseRev: source.rev, now }); }
-  catch (error) { try { storage.removeItem(projectKey(layer.id)); } catch { /* keep going */ } throw error; }
-  return { source: updated, layer, previousSourceConfig };
+  const next = appendLayer(source.config, options.sourceIndex ?? projectLayers(source.config).length - 1, options);
+  const updated = updateProjectConfig(storage, source.id, next, { baseRev: source.rev, now });
+  const layers = projectLayers(updated.config);
+  return { source: updated, layer: layers.at(-1)!, layerIndex: layers.length - 1, previousSourceConfig };
 }
 
 /**
@@ -530,7 +513,10 @@ export function migrateLegacyStorage(storage: ProjectStorage, now = new Date()):
     }
   }
   const raw = {} as Record<Source, string | null>, prints = {} as Record<Source, string>;
-  for (const key of SOURCES) { raw[key] = storage.getItem(key); prints[key] = raw[key] === null ? '-' : fingerprint(raw[key]!); }
+  for (const key of SOURCES) {
+    raw[key] = storage.getItem(key);
+    prints[key] = raw[key] === null ? '-' : fingerprint(raw[key]!) + (/"traySet"\s*:/.test(raw[key]!) ? ':layers' : '');
+  }
   const changed = (key: Source): boolean => marker?.sources[key] !== prints[key];
   if (!SOURCES.some(changed)) return report;
   report.ran = true;
@@ -585,7 +571,7 @@ export function migrateLegacyStorage(storage: ProjectStorage, now = new Date()):
     entries.forEach((entry, index) => {
       const e = (entry && typeof entry === 'object' ? entry : {}) as Record<string, unknown>;
       let config: HolderConfig;
-      try { config = validateConfig(e.config); } catch (error) {
+      try { config = validateConfig(e.traySet === undefined ? e.config : { traySet: e.traySet }); } catch (error) {
         unreadable.add(projectsKey);
         report.problems.push({ source: projectsKey, message: `Saved project ${index + 1} could not be read (${(error as Error).message}). It has been kept in this browser.` });
         return;
@@ -597,6 +583,15 @@ export function migrateLegacyStorage(storage: ProjectStorage, now = new Date()):
       if (seen.has(item)) return;
       const name = safeName(e.name, 'Imported project'), target = read(id);
       if (target === undefined && !importedIds.has(id)) { write(projectsKey, item, record(id, name, false, config, stamp(e.createdAt), stamp(e.updatedAt))); return; }
+      // Repair an untouched import made before the prototype's traySet was understood.
+      // Once edited, preserve both versions through the normal recovery path below.
+      if (e.traySet !== undefined && target && target !== 'corrupt' && !target.deletedAt && target.rev === 1) {
+        try {
+          if (sameConfig(target.config, validateConfig(e.config))) {
+            write(projectsKey, item, { ...target, config, rev: target.rev + 1 }); return;
+          }
+        } catch { /* A malformed old active config must not prevent recovery of its valid tray set. */ }
+      }
       // Present from an interrupted first run, or unchanged: nothing to do.
       if (target && target !== 'corrupt' && (firstRun || sameConfig(target.config, config))) { seen.add(item); return; }
       // Changed by an older build after migration (or the target is unreadable): keep both versions.
@@ -613,7 +608,7 @@ export function migrateLegacyStorage(storage: ProjectStorage, now = new Date()):
     try {
       const d = JSON.parse(raw[draftKey]!);
       if (!d || typeof d !== 'object' || Array.isArray(d) || d.version !== 1 || (d.projectId !== undefined && (typeof d.projectId !== 'string' || !d.projectId.trim()))) throw new Error();
-      const config = validateConfig(d.config);
+      const config = validateConfig(d.traySet === undefined ? d.config : { traySet: d.traySet });
       draftProject = adoptDraft(draftKey, config, {
         ownerId: d.projectId === undefined ? undefined : legacyId(d.projectId), owned: true,
         name: () => ({ name: defaultProjectName(config.template, names), autoName: true }),

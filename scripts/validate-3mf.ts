@@ -37,7 +37,7 @@ await writeFile(artifact, output);
 const entries = unzipSync(output);
 const model = strFromU8(entries['3D/3dmodel.model']);
 assert.match(model, /unit="millimeter"/);
-assert.deepEqual(JSON.parse(strFromU8(entries['Metadata/project_settings.config'])), THREE_MF_PRINT_SETTINGS);
+assert.equal(entries['Metadata/project_settings.config'], undefined, 'Recommendations are per object only');
 
 function attributes(tag: string): Record<string, string> {
   return Object.fromEntries([...tag.matchAll(/([\w_]+)="([^"]*)"/g)].map((m) => [m[1], m[2]]));
@@ -91,14 +91,13 @@ if (nativePath) {
     const metadata = Object.fromEntries([...objectOnly.matchAll(/<metadata\b([^>]*)\/>/g)].map((match) => {
       const a = attributes(match[1]); return [a.key, a.value];
     }));
-    assert.equal(metadata.sparse_infill_density, '5%');
-    assert.equal(metadata.wall_generator, 'arachne');
+    for (const [key, value] of Object.entries(THREE_MF_PRINT_SETTINGS)) assert.equal(metadata[key], value);
     const meshStats = attributes(object[1].match(/<mesh_stat\b([^>]*)\/>/)![1]);
     for (const key of ['edges_fixed', 'degenerate_facets', 'facets_removed', 'facets_reversed', 'backwards_edges']) assert.equal(meshStats[key], '0', `Native import ${metadata.name}: ${key}`);
     const matchingMesh = checks.find((mesh) => mesh.id === metadata.name);
     assert.ok(matchingMesh);
     assert.equal(Number(meshStats.face_count), matchingMesh.triangles);
-    return { name: metadata.name, sparse_infill_density: metadata.sparse_infill_density, wall_generator: metadata.wall_generator, meshStats };
+    return { name: metadata.name, sparse_infill_density: metadata.sparse_infill_density, wall_generator: metadata.wall_generator, brim_type: metadata.brim_type, meshStats };
   });
   assert.deepEqual(imported.map((object) => object.name).sort(), parts.map((part) => part.id).sort());
   native = { application, artifact: nativePath, bytes: nativeBytes.length, sha256: createHash('sha256').update(nativeBytes).digest('hex'), objects: imported };

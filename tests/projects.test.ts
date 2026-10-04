@@ -544,39 +544,40 @@ describe('matching layers', () => {
     expect(matchingLayerName('Desk – layer 2', ['Desk', 'Desk – layer 2'])).toBe('Desk – layer 3');
     expect(matchingLayerName('A'.repeat(80), []).length).toBe(80);
   });
-  it('fixes the source footprint, copies stacking settings, starts empty and moves the lid on request', () => {
+  it('keeps automatic sizing, shares stacking settings, starts with defaults and always keeps the lid on top', () => {
     const s = createMemoryStorage(), c = tray();
     Object.assign(c.options.tray, { connection: 'h20_slide_v7', slideDirection: 'front', lid: true, lidText: 'TOP', height: 10 });
     const source = createProject(s, { config: c, name: 'Desk' }, at(0));
-    const { source: after, layer, previousSourceConfig } = createMatchingLayer(s, source.id, { footprint: { width: 118, depth: 96 }, moveLid: true }, at(1));
+    const { source: after, layer, previousSourceConfig } = createMatchingLayer(s, source.id, { footprint: { width: 118, depth: 96 } }, at(1));
     expect(previousSourceConfig).toEqual(c);
-    expect(after.config.options.tray).toMatchObject({ footprint: { width: 118, depth: 96 }, lid: false, lidText: 'TOP' });
+    expect(after.config.options.tray).toMatchObject({ footprint: null, lid: false, lidText: 'TOP' });
     expect(after.config.slots).toEqual(c.slots);
-    expect(layer).toMatchObject({ name: 'Desk – layer 2', autoName: false });
+    expect(layer.name).toBe('Layer 2');
+    expect(listProjects(s).projects).toHaveLength(1);
+    expect(after.config.layers).toHaveLength(1);
     expect(layer.config.slots).toEqual([]);
-    expect(layer.config.options.tray).toMatchObject({ connection: 'h20_slide_v7', slideDirection: 'front', height: 10, footprint: { width: 118, depth: 96 }, lid: true, lidText: 'TOP' });
-    const again = createMatchingLayer(s, layer.id, { footprint: { width: 1, depth: 1 }, moveLid: false }, at(2));
-    expect(again.layer.name).toBe('Desk – layer 3');
-    expect(again.layer.config.options.tray).toMatchObject({ footprint: { width: 118, depth: 96 }, lid: false });
-    expect(getProject(s, layer.id)?.config.options.tray.lid).toBe(true);
+    expect(layer.config.options.tray).toMatchObject({ connection: 'h20_slide_v7', slideDirection: 'front', height: 10, footprint: null, lid: true, lidText: 'TOP', spacing: 24, rowGap: 2, retention: false });
+    const again = createMatchingLayer(s, source.id, { footprint: { width: 1, depth: 1 } }, at(2));
+    expect(again.layer.name).toBe('Layer 3');
+    expect(again.layer.config.options.tray).toMatchObject({ footprint: null, lid: true, lidText: 'TOP' });
+    expect(getProject(s, source.id)?.config.layers?.[0].config.options.tray.lid).toBe(false);
   });
   it('keeps an already fixed footprint, refuses docks and leaves no layer behind when the source write fails', () => {
     const { storage, failWith } = instrumented();
     const c = tray(); c.options.tray.footprint = { width: 150, depth: 100 };
     const source = createProject(storage, { config: c, name: 'Fixed' });
-    const r = createMatchingLayer(storage, source.id, { footprint: { width: 1, depth: 1 }, moveLid: true });
+    const r = createMatchingLayer(storage, source.id, { footprint: { width: 1, depth: 1 } });
     expect(r.layer.config.options.tray.footprint).toEqual({ width: 150, depth: 100 });
     expect(r.layer.config.options.tray.lid).toBe(false);
     const d = createProject(storage, { config: dock() });
-    expect(() => createMatchingLayer(storage, d.id, { footprint: { width: 1, depth: 1 }, moveLid: false })).toThrow('only available for inventory trays');
+    expect(() => createMatchingLayer(storage, d.id, { footprint: { width: 1, depth: 1 } })).toThrow('only available for inventory trays');
     const lidded = tray(); lidded.options.tray.lid = true;
     const p = createProject(storage, { config: lidded, name: 'Lid' });
     const before = listProjects(storage).projects.length;
     failWith(key => (key === projectKey(p.id) ? quota() : undefined));
-    expect(() => createMatchingLayer(storage, p.id, { footprint: { width: 100, depth: 90 }, moveLid: true })).toThrow(expect.objectContaining({ code: 'quota' }));
+    expect(() => createMatchingLayer(storage, p.id, { footprint: { width: 100, depth: 90 } })).toThrow(expect.objectContaining({ code: 'quota' }));
     failWith();
     expect(listProjects(storage).projects.length).toBe(before);
     expect(getProject(storage, p.id)?.config.options.tray.lid).toBe(true);
   });
 });
-

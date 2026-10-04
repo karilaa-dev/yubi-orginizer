@@ -4,7 +4,7 @@ import type { HolderConfig } from '../src/types';
 import { offlineStatusText, updateCheckText } from '../src/ui/app-help';
 import { fieldErrorText, numberField, sliderField } from '../src/ui/editor-fields';
 import { catalogMarkup, catalogTotalText, dropIndex, isKeysControl, keysPanelMarkup, reinsertSlot, removeOneOfType, removedMessage } from '../src/ui/editor-keys';
-import { controlValue, settingsPanelMarkup, sizePanelMarkup, snapFitRangeError, withConnection, withTemplate } from '../src/ui/editor-settings';
+import { controlValue, trayGroups, settingsPanelMarkup, sizePanelMarkup, snapFitRangeError, withConnection, withTemplate } from '../src/ui/editor-settings';
 import {
   createErrorAnnouncer, downloadButtonState, downloadDialogStatus, fileSizeText, formatNote, generationLabel, gramsText, isOfflineSetupFailure,
   mobileStatusText, partSelectValue, preparingLabel, previewOverlay, primaryDownloadLabel, printTip,
@@ -77,9 +77,9 @@ describe('Preview overlay', () => {
     expect(previewOverlay('empty')).toMatchObject({ text: 'Add keys to start', actions: [{ label: 'Add keys', action: 'add' }] });
     expect(previewOverlay('invalid', { errors: 1 })?.text).toBe('Fix 1 setting to update the model.');
     expect(previewOverlay('invalid', { errors: 3 })).toMatchObject({ text: 'Fix 3 settings to update the model.', actions: [{ action: 'show-error' }] });
-    expect(previewOverlay('too-small', { required: { width: 164, depth: 82.8 }, grow: { width: 164, depth: 90 } })).toMatchObject({
-      text: 'Too small. These keys need at least 164 × 82.8 mm.',
-      actions: [{ label: 'Use 164 × 90 mm', action: 'grow-footprint' }, { label: 'Fit to keys', action: 'auto-footprint' }],
+    expect(previewOverlay('too-small', { required: { width: 164, depth: 82.8 }, grow: { width: 164, depth: 90 }, cancellable: true })).toMatchObject({
+      text: 'This change needs at least 164 × 82.8 mm. Resize every tray to fit?',
+      actions: [{ label: 'Use 164 × 90 mm', action: 'grow-footprint' }, { label: 'Cancel', action: 'cancel-resize' }],
     });
     expect(previewOverlay('paused')).toMatchObject({ text: 'Paused.', actions: [{ label: 'Resume', action: 'retry' }] });
     expect(previewOverlay('failed')?.text).toBe("Couldn't generate the model.");
@@ -220,7 +220,8 @@ describe('Keys: catalog steppers and list operations', () => {
     expect(catalog).toContain('data-remove-type="C" aria-label="Remove one YubiKey 5C NFC" disabled');
     expect(catalog).toContain('Also fits: Security Key C NFC, YubiKey 5C NFC FIPS');
     expect(catalogMarkup(c, 'zzz')).toContain('No matching keys');
-    expect(['labels', 'labelSize', 'label-x'].every(isKeysControl)).toBe(true);
+    expect(isKeysControl('label-x')).toBe(true);
+    expect(['labels', 'labelSize', 'tray.columns', 'dock.columns'].some(isKeysControl)).toBe(false);
     expect(isKeysControl('tray.margin')).toBe(false);
   });
 });
@@ -313,16 +314,27 @@ describe('Settings panel markup', () => {
       keysPanelMarkup(c, { draggable: false }),
       sizePanelMarkup(c, { match: undefined, candidates: [] }),
       settingsPanelMarkup(c, { open: new Set() }),
+      c.template === 'inventory_tray' ? trayGroups(c, new Set(), 'layers') + settingsPanelMarkup(c, { open: new Set(), lid: true }) : '',
     ];
     const trayHtml = settingsPanelMarkup(tray(), { open: new Set() });
     const all = tabs(tray()).join('');
     for (const id of TRAY_CONTROLS) expect(all, id).toContain(`data-control="${id}"`);
-    expect(tabs(tray())[0]).toContain('data-control="tray.columns"');
+    for (const id of ['tray.columns', 'labels', 'labelSize']) {
+      expect(tabs(tray())[0]).not.toContain(`data-control="${id}"`);
+      expect(trayHtml).toContain(`data-control="${id}"`);
+    }
+    const lidHtml = settingsPanelMarkup(tray(), { open: new Set(), lid: true });
+    expect(lidHtml).toContain('data-control="tray.lidText"');
+    expect(lidHtml).not.toContain('data-control="tray.columns"');
+    expect(lidHtml).not.toContain('data-control="labels"');
     expect(tabs(tray())[0]).toContain('data-template-switch');
     expect(tabs(tray())[2]).not.toContain('data-template-switch');
     expect(tabs(tray())[1]).toContain('data-control="tray.spacing"');
     expect(trayHtml).not.toContain('Snap-fit (from an older version)');
     expect(trayHtml).not.toContain('dock-notice');
+    expect(trayHtml).not.toContain('data-control="tray.lid"');
+    expect(tabs(tray())[3]).toContain('data-control="tray.lidStyle"');
+    expect(tabs(tray())[3]).toContain('data-control="tray.connection"');
     expect(trayHtml).not.toContain('rotate-lid-text');
     const dock = { ...tray(), template: 'desktop_dock' as const };
     const dockHtml = keysPanelMarkup(dock, { draggable: false, dockNotice: true });
@@ -333,7 +345,7 @@ describe('Settings panel markup', () => {
   it('keeps the retired snap-fit card only while it is selected', () => {
     const c = tray();
     c.options.tray.connection = 'snap_fit';
-    expect(settingsPanelMarkup(c, { open: new Set() })).toContain('Snap-fit (from an older version)');
+    expect(trayGroups(c, new Set(), 'layers')).toContain('Snap-fit (from an older version)');
   });
 
   it('reads control values from the config', () => {

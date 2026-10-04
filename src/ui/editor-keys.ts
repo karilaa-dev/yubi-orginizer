@@ -5,11 +5,9 @@
 import { KEY_CATALOG, MAX_SLOTS } from '../config';
 import { MATCHING_MODELS, searchKeys } from '../catalog';
 import { icon, keyIcon } from '../icons';
-import { keyLabelPercent } from '../text-size';
 import type { HolderConfig, KeyType, Slot } from '../types';
 import { esc, plural } from './dom';
-import { inlineSegmentedField, inlineSliderField, switchField } from './editor-fields';
-import { COLUMN_OPTIONS, organizerTypeMarkup } from './editor-settings';
+import { organizerTypeMarkup } from './editor-settings';
 
 export { isKeysControl } from './settings-model';
 
@@ -64,7 +62,7 @@ export function dropIndex(from: number, target: number, after: boolean): number 
 
 /* ───────────── Markup ───────────── */
 
-function keyRow(slot: Slot, index: number, count: number, draggable: boolean): string {
+function keyRow(slot: Slot, index: number, count: number, draggable: boolean, tray: boolean): string {
   const name = KEY_CATALOG[slot.type].name;
   const hideLabel = slot.occupied ? `Hide ${name} in preview` : `Show ${name} in preview`;
   return `<li class="key-row${slot.occupied ? '' : ' key-hidden'}" data-slot="${slot.id}"${draggable ? ' draggable="true"' : ''}>
@@ -77,6 +75,7 @@ function keyRow(slot: Slot, index: number, count: number, draggable: boolean): s
     <div class="key-row-main">
       <span class="key-model"><span class="key-model-name">${esc(name)}</span><span class="badge"${slot.occupied ? ' hidden' : ''}>Hidden in preview</span></span>
       <input id="label-${slot.id}" class="key-label" data-label="${slot.id}" type="text" value="${esc(slot.label)}" maxlength="18" placeholder="No label" autocomplete="off" spellcheck="false" aria-label="Printed label for key ${index + 1}, ${esc(name)}" aria-describedby="error-label-${slot.id} label-reorder-help"/>
+      ${tray ? `<button type="button" class="key-rotation" data-rotate="${slot.id}" aria-label="Rotate key ${index + 1}, ${esc(name)} to ${slot.rotation === 90 ? 'vertical' : 'horizontal'}" title="Rotate pocket and key 90°">${icon('rotate')}<span>${slot.rotation === 90 ? 'Horizontal' : 'Vertical'}</span></button>` : ''}
       <p class="field-error" id="error-label-${slot.id}" data-error="label-${slot.id}" hidden></p>
     </div>
     <button type="button" class="icon-button" data-occupied="${slot.id}" aria-label="${esc(hideLabel)}" title="${slot.occupied ? 'Hide in preview. The pocket stays.' : 'Show in preview'}">${icon(slot.occupied ? 'eye' : 'eyeOff')}</button>
@@ -92,22 +91,13 @@ export function keysPanelMarkup(config: HolderConfig, options: { draggable: bool
       <button type="button" class="button primary" data-action="add">${icon('plus')}Add keys</button></div>`;
   }
   const full = slots.length >= MAX_SLOTS;
-  const columns = config.template === 'desktop_dock' ? config.options.dock.columns : config.options.tray.columns;
-  const columnsId = config.template === 'desktop_dock' ? 'dock.columns' : 'tray.columns';
-  const top = `<div class="panel-section keys-top">
-      ${type}
-      ${inlineSegmentedField({ id: columnsId, legend: 'Columns', options: COLUMN_OPTIONS, value: columns, numeric: true, className: 'columns-field' })}
-      <div class="text-setting">
-        ${switchField({ id: 'labels', label: 'Print labels', checked: config.labels })}
-        <div class="text-options label-size"${config.labels ? '' : ' hidden'}>${inlineSliderField({ id: 'labelSize', label: 'Size', spoken: 'Label size', value: keyLabelPercent(config.labelSize), min: 37.5, max: 100, step: 2.5, unit: '%' })}</div>
-        <p id="labels-off-note" class="field-hint"${config.labels ? ' hidden' : ''}>Labels won't be printed.</p>
-      </div>
-    </div>`;
+  const top = `<div class="panel-section keys-top">${type}</div>`;
   return `${top}
     <p id="reorder-help" class="sr-only">Use the Move up and Move down buttons, or press Arrow Up or Arrow Down here.</p>
     <p id="label-reorder-help" class="sr-only">Alt+Arrow Up or Alt+Arrow Down moves this key.</p>
-    <ol class="key-list" aria-label="Keys in this organizer">${slots.map((slot, i) => keyRow(slot, i, slots.length, options.draggable)).join('')}</ol>
+    <ol class="key-list" aria-label="Keys in this organizer">${slots.map((slot, i) => keyRow(slot, i, slots.length, options.draggable, config.template === 'inventory_tray')).join('')}</ol>
     <div class="keys-footer">
+      ${config.template === 'inventory_tray' ? `<button type="button" class="button secondary compact" data-action="arrange-compactly">${icon('rotate')}Arrange compactly</button>` : ''}
       <button type="button" class="button secondary add-key-button" data-action="add"${full ? ' disabled aria-describedby="keys-max"' : ''}>${icon('plus')}Add keys</button>
       <p id="keys-max" class="field-hint"${full ? '' : ' hidden'}>${MAX_SLOTS} keys max</p>
     </div>`;

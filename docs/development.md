@@ -27,6 +27,7 @@ npm run test:geometry -- --report=artifacts/geometry-validation.json
 node --import tsx scripts/validate-3mf.ts
 node --import tsx scripts/validate-tray-snap.ts
 node --import tsx scripts/validate-tray-sizing.ts
+node --import tsx scripts/validate-tray-layers.ts
 npm run validate:h20
 ```
 
@@ -109,3 +110,34 @@ nothing reloads. Then refresh: the page updates by itself. Without a check, an
 open tab only looks for updates every 15 minutes.
 Check keyboard and touch interaction. A successful build does not establish
 browser coverage or physical printing quality.
+
+## Tray sets
+
+Existing version-1 configs remain the first tray. `layerName` names that tray;
+`layers` contains the additional `{ name, config }` entries, ordered bottom to
+top. Nested sets are rejected. Project autosave, conflict detection, duplication
+and JSON backups write the entire set in one record. Older Keyform `traySet`
+files are imported without dropping their other layers. Root footprint, height, connection
+and slide direction are authoritative for the project. `resolvedTrayLayers`
+applies the common automatic footprint before any layer is rendered or exported.
+Edits exceeding a fixed footprint stay in the editor draft until Resize or Cancel.
+
+`Slot.rotation` is 0 (vertical, including old files) or 90 (horizontal). The
+layout reserves rotated pocket, label, scoop and retention envelopes.
+`tray.arrangement: "compact"` packs those envelopes deterministically; the
+Arrange compactly command searches rotations without changing key identities or labels. Assembly
+transforms in `geometry/layers.ts` only affect preview placement; printable
+STL/SCAD meshes stay at Z=0, and 3MF lays them out on the build plate.
+
+`traySetItems` presents each tray and lid independently without rewriting older
+project files. The preview always renders `buildTraySet`, with exploded parts in one row.
+`OrganizerPreview.setFocusedPart` centers the orbit target on a selected item and
+sets other parts and their reference keys to 25% opacity, without regenerating meshes.
+`buildTrayItem` can resolve a single printable item; `selectTrayParts`
+filters an export after the full set has resolved its shared dimensions. Download
+uses a separate cancellable render job and the shared SCAD mesh cache, so its
+selection never changes the active editing layer.
+
+The development server serves a retiring worker at `sw.js` so an offline build
+previously installed on the same port cannot keep serving stale assets. This
+does not modify project storage.

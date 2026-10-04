@@ -62,7 +62,7 @@ export function trayConnectionInstructions(config: HolderConfig): string[] {
 
 function trayLockPrintNotes(config: HolderConfig, project: ProjectGeometry): string[] {
   const h20Notes = project.parts.some(p => p.id.startsWith('fit-tray-h20-')) || (config.template === 'inventory_tray' && config.options.tray.connection === 'h20_slide_v7') ? ['SLIDE-LOCK (H20/V7)', config.template === 'inventory_tray' ? trayH20Instructions(config.options.tray.slideDirection) : TRAY_H20_INSTRUCTIONS] : [];
-  const snap = project.parts.some(p => p.id.startsWith('fit-tray-snap-')) || (config.template === 'inventory_tray' && config.options.tray.connection === 'snap_fit' && project.parts.some(p => p.id === 'tray'));
+  const snap = project.parts.some(p => p.id.startsWith('fit-tray-snap-')) || (config.template === 'inventory_tray' && config.options.tray.connection === 'snap_fit' && project.parts.some(p => p.id === 'tray' || p.id.endsWith('-tray')));
   if (!snap) return h20Notes;
   return [
     ...h20Notes, 'SNAP-FIT (OLDER VERSION)', TRAY_SNAP_INSTRUCTIONS,

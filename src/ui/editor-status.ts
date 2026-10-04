@@ -56,7 +56,7 @@ export interface OverlayModel { text: string; icon: string; actions: OverlayActi
 /** The centred card on the preview, or undefined when the model itself is the content. */
 export function previewOverlay(
   state: PreviewState,
-  detail: { errors?: number; required?: { width: number; depth: number }; grow?: { width: number; depth: number }; message?: string } = {},
+  detail: { errors?: number; required?: { width: number; depth: number }; grow?: { width: number; depth: number }; message?: string; cancellable?: boolean } = {},
 ): OverlayModel | undefined {
   switch (state) {
     case 'empty':
@@ -68,8 +68,8 @@ export function previewOverlay(
     case 'too-small': {
       const mm = (s?: { width: number; depth: number }): string => (s ? `${fmt(s.width)} × ${fmt(s.depth)} mm` : '');
       return {
-        icon: 'alert', tone: 'error', text: `Too small. These keys need at least ${mm(detail.required)}.`,
-        actions: [{ label: `Use ${mm(detail.grow ?? detail.required)}`, action: 'grow-footprint', primary: true }, { label: 'Fit to keys', action: 'auto-footprint' }],
+        icon: 'alert', tone: 'error', text: `This change needs at least ${mm(detail.required)}. Resize every tray to fit?`,
+        actions: [{ label: `Use ${mm(detail.grow ?? detail.required)}`, action: 'grow-footprint', primary: true }, ...(detail.cancellable ? [{ label: 'Cancel', action: 'cancel-resize' }] : [])],
       };
     }
     case 'paused':

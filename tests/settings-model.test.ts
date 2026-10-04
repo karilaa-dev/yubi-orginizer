@@ -14,14 +14,17 @@ describe('tray settings model', () => {
     expect(TRAY_GROUPS.map(g => g.title)).toEqual(['Stacking', 'Lid', 'Pockets & text']);
     expect(SIZE_SECTIONS.inventory_tray.map(s => s.title)).toEqual(['Size', 'Spacing']);
     expect(DEFAULT_OPEN_GROUPS.inventory_tray).toEqual(['stacking', 'lid']);
-    expect(panelOfControl('inventory_tray', 'tray.columns')).toBe('keys');
-    expect(panelOfControl('inventory_tray', 'labelSize')).toBe('keys');
+    expect(panelOfControl('inventory_tray', 'tray.columns')).toBe('settings');
+    expect(panelOfControl('inventory_tray', 'labelSize')).toBe('settings');
+    expect(panelOfControl('inventory_tray', 'tray.lidText')).toBe('settings');
+    expect(panelOfControl('inventory_tray', 'tray.connection')).toBe('layers');
+    expect(panelOfControl('inventory_tray', 'label-x')).toBe('keys');
     expect(panelOfControl('inventory_tray', 'tray.width')).toBe('size');
     expect(panelOfControl('inventory_tray', 'tray.margin')).toBe('size');
     expect(panelOfControl('inventory_tray', 'tray.rowGap')).toBe('size');
     expect(panelOfControl('inventory_tray', 'tray.sideTextPercent')).toBe('settings');
     expect(panelOfControl('desktop_dock', 'dock.depthMargin')).toBe('size');
-    expect(panelOfControl('desktop_dock', 'dock.columns')).toBe('keys');
+    expect(panelOfControl('desktop_dock', 'dock.columns')).toBe('settings');
     expect(groupOfControl('inventory_tray', 'tray.sideTextPercent')).toBe('pockets');
     expect(groupOfControl('inventory_tray', 'tray.margin')).toBeUndefined();
     expect(groupOfControl('inventory_tray', 'label-x')).toBeUndefined();
@@ -65,7 +68,6 @@ describe('tray settings model', () => {
     expect(s.controls['tray.slideDirection'].visible).toBe(true);
     expect(s.controls['tray.lidTextPercent']).toMatchObject({ visible: true, disabled: false });
     expect(s.controls['tray.lidStyle'].hint).toBe('Thin ribbed panel. Uses less filament.');
-    expect(s.controls['tray.lid'].hint).toBe('On a stack, add the lid to the top layer only.');
     expect(s.connectionNote).toBe('Adds a 13 mm border on the two locking edges.');
     expect(summary(c, 'stacking')).toBe('Slide-lock · ↑ Back');
     expect(summary(c, 'lid')).toBe('Minimal lid · “WORK”');

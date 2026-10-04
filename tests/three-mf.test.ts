@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { unzipSync, strFromU8 } from 'fflate';
+import { selectTrayParts } from '../src/geometry/layers';
 import { build3mf, THREE_MF_PRINT_SETTINGS } from '../src/three-mf';
 import type { PartSpec, ProjectGeometry } from '../src/types';
 
@@ -27,11 +28,12 @@ describe('3MF export', () => {
     expect(model.match(/<triangle /g)).toHaveLength(4);
     expect(model).toContain('A &amp; &quot;B&quot; &lt;test&gt;');
     expect(text(result, '_rels/.rels')).toContain('Target="/3D/3dmodel.model"');
-    expect(JSON.parse(text(result, 'Metadata/project_settings.config'))).toEqual(THREE_MF_PRINT_SETTINGS);
+    expect(result['Metadata/project_settings.config']).toBeUndefined();
     expect(text(result, 'Metadata/model_settings.config')).toContain('key="sparse_infill_density" value="5%"');
     expect(text(result, 'Metadata/model_settings.config')).toContain('key="wall_generator" value="arachne"');
+    expect(text(result, 'Metadata/model_settings.config')).toContain('key="brim_type" value="outer_only"');
     expect(Object.keys(result).some((name) => name.includes('gcode'))).toBe(false);
-    expect(text(result, 'Metadata/project_settings.config')).not.toMatch(/printer|filament|nozzle|temperature/);
+    expect(text(result, 'Metadata/model_settings.config')).not.toMatch(/printer|filament|nozzle|temperature/);
   });
   it('lays parts flat at zero with non-overlapping build translations instead of assembly poses', () => {
     const entries = unzipSync(build3mf(project([part('a'), part('b')]), new Map([['a', tetrahedron(7)], ['b', tetrahedron(12)]])));
@@ -53,6 +55,28 @@ describe('3MF export', () => {
     const entries = unzipSync(build3mf(project([part('a'), part('b')]), new Map([['b', tetrahedron()]]), { partId: 'b' }));
     expect(text(entries, '3D/3dmodel.model').match(/<object /g)).toHaveLength(1);
     expect(text(entries, '3D/3dmodel.model')).toContain('name="b"');
+  });
+  it('exports only checked tray and lid items, with no meshes needed for unchecked trays', () => {
+    const full = project([part('layer-1-tray'), part('layer-2-tray'), part('layer-2-tray-lid')]);
+    for (const ids of [['layer-1-tray', 'layer-2-tray-lid'], ['layer-2-tray-lid']]) {
+      const selected = selectTrayParts(full, new Set(ids));
+      const meshes = new Map(ids.map(id => [id, tetrahedron()]));
+      const entries = unzipSync(build3mf(selected, meshes));
+      const model = text(entries, '3D/3dmodel.model');
+      expect(model.match(/<object /g)).toHaveLength(ids.length);
+      for (const id of ids) expect(model).toContain(`name="${id}"`);
+      expect(model).not.toContain('name="layer-2-tray"');
+      expect(entries['Metadata/project_settings.config']).toBeUndefined();
+      const objects = [...text(entries, 'Metadata/model_settings.config').matchAll(/<object[^>]*>([\s\S]*?)<\/object>/g)];
+      expect(objects).toHaveLength(ids.length);
+      for (const [, object] of objects) {
+        const [objectSettings, partSettings] = object.split('<part');
+        for (const [key, value] of Object.entries(THREE_MF_PRINT_SETTINGS)) {
+          expect(objectSettings).toContain(`<metadata key="${key}" value="${value}"/>`);
+          expect(partSettings).not.toContain(`key="${key}"`);
+        }
+      }
+    }
   });
   it('rejects unfinished, invalid, or missing models and produces reproducible bytes', () => {
     const input = project([part('a')]);

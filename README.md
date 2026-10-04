@@ -41,33 +41,53 @@ service worker; the development server does not install the offline app.
    Choose **Inventory tray** or **Desktop dock** to start a new project, or open
    an existing project card.
 2. In the **Keys** tab, choose **Add keys** and set how many of each model you
-   need. Repeated keys and custom labels are supported; **Organizer type**,
-   **Columns**, **Print labels** and the label **Size** are at the top of the tab. Hiding a
-   key in the preview keeps its pocket; removing a key removes the pocket.
+   need. Repeated keys and custom labels are supported; **Organizer type** is at the top of the tab. In a project with multiple trays,
+   it stays locked to Inventory tray; hover or click for an explanation. Hiding a
+   key in the preview keeps its pocket; removing a key removes the pocket. Each
+   tray key has a **Vertical / Horizontal** rotation button that turns its pocket,
+   finger access, retention features and label together. **Arrange compactly**
+   rotates and packs the layer with room for labels and finger access; Undo restores it.
 3. In the **Size** tab, choose the **Footprint** (**Fit to keys**,
    **Fixed size**, or **Match project** to copy the width and depth of another
    saved tray) and the height. **Spacing** below sets the column and row spacing
-   and the edge margin.
-4. In **Tray settings** (or **Dock settings**), adjust the groups: **Stacking**,
-   **Lid** and **Pockets & text** (or **Text** for docks). A collapsed group
+   and the edge margin. The footprint and tray height are shared by all layers; **Fit to keys** uses
+   the minimum width and depth needed by the whole set. A change that exceeds a
+   fixed size offers the proposed new size and **Cancel** before it is saved.
+4. In **Tray settings** (or **Dock settings**), before Size, adjust **Columns**,
+   **Print labels**, label **Size**, and **Pockets & text**
+   (or **Text** for docks). A collapsed group
    shows a summary of its current settings. Front text is engraved into the
    front wall; it can be resized, but small text won't print crisply.
-5. Changes save automatically; the editor bar shows **Saved**. Select the project
+5. In the **Layers** tab, add, rename, duplicate, reorder or remove trays within
+   one project (up to 16 layers). **All layers** previews the complete set;
+   the default preview lays every tray and lid out in one row.
+   Selecting a layer keeps the current tab, centers the camera on it, and makes other
+   layers 75% transparent. The camera orbits the selected layer. Use **All layers**
+   to restore the overview, or turn **Explode** off to see the stack. Drag trays by
+   their handles to reorder them; keyboard arrows and the actions menu also work.
+   The lid always stays on top.
+   **Stacking** here sets the project connection and slide direction.
+   Selecting the lid renames **Tray settings** to **Lid settings**, containing its style,
+   text, text size and rotation. New layers start at minimum spacing with
+   retention tabs off; duplicating a layer preserves its settings.
+6. Changes save automatically; the editor bar shows **Saved**. Select the project
    name to rename it. The **⋯** project menu offers Rename, Duplicate,
    **New matching layer**, **Save project file (.json)** and Delete. Deleting can
    be undone, and deleted projects stay under **Recently deleted** on the
    Projects page for 30 days.
-6. Inspect the preview and use **Explode** to view separate parts. Choose
+7. Inspect the preview and use **Explode** to view separate parts. Choose
    **Download**, select the parts and export format, then inspect the file in
-   your slicer before printing. Downloaded files are named after the project.
+   your slicer before printing. Download starts with every tray and lid selected,
+   regardless of the preview. Toggle individual items in **Layers to download**. **Save project file (.json)**
+   always includes the full set, including layer names and key rotations.
 
 Under **Stacking**, choose **Standalone** for a single tray with an optional
 lift-off lid, **Stackable** for locating rims, or **Slide-lock** for the two-pin
 H20/V7 connection. Every layer of a stack needs the same size, connection and
-slide direction. **New matching layer** creates an empty tray that stacks on the
-current one: it switches the current tray to **Size › Fixed size** so the
-outside dimensions match, copies the connection and layout, and can move the lid
-to the new top layer. You can also set **Size › Fixed size** by hand, or use
+slide direction. **Layers › Add tray** creates an empty tray in the current
+project, shares its footprint and connection, and moves the top lid to
+the new layer. Size, connection and slide direction changes apply to the whole
+set; keys, labels and pocket settings belong to each layer. You can also set **Size › Fixed size** by hand, or use
 **Size › Match project** to give an existing tray the footprint of another. Saved enclosure snap-fit projects retain their geometry and appear as
 **Snap-fit (from an older version)**. Regenerate both mating parts when changing
 the connection type.

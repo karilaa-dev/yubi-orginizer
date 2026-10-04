@@ -163,9 +163,9 @@ function takeUiState(id: string): UiState | undefined {
   try {
     const data = JSON.parse(store.session?.getItem(UI_KEY) ?? 'null') as Partial<UiState & { at: number; id: string }> | null;
     if (!data || data.id !== id || typeof data.at !== 'number' || Date.now() - data.at > UI_MAX_AGE_MS) return undefined;
-    const panel: Panel = data.panel === 'settings' || data.panel === 'size' ? data.panel : 'keys';
+    const panel: Panel = data.panel === 'settings' || data.panel === 'size' || data.panel === 'layers' ? data.panel : 'keys';
     const number = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0);
-    return { panel, panelScroll: number(data.panelScroll), windowScroll: number(data.windowScroll) };
+    return { panel, panelScroll: number(data.panelScroll), windowScroll: number(data.windowScroll), layer: Math.floor(number(data.layer)), allLayers: data.allLayers === true, lid: data.lid === true };
   } catch { return undefined; }
 }
 
@@ -240,7 +240,7 @@ function openHelp(sectionId?: string): void {
 /* ───────────── Routing ───────────── */
 
 let displayed: Route | undefined;
-let pendingOpen: { addKeys?: boolean } | undefined;
+let pendingOpen: { addKeys?: boolean; layer?: number } | undefined;
 let routeToasted = false;
 
 const actions: ProjectActionsDeps = {
@@ -291,7 +291,7 @@ const projectsView = createProjectsView(projectsPage, {
 });
 
 /** In-app navigation: pushes a history entry and shows the route at once (hashchange then finds it shown). */
-function navigate(hash: string, options?: { addKeys?: boolean }): void {
+function navigate(hash: string, options?: { addKeys?: boolean; layer?: number }): void {
   pendingOpen = options;
   if (location.hash !== hash) location.hash = hash;
   showRoute();
@@ -342,6 +342,7 @@ function showRoute(initial = false): void {
     history.replaceState(history.state, '', routeHash(route));
   }
   if (displayed && sameRoute(route, displayed)) {
+    if (options?.layer !== undefined && route.view !== 'home') editor.selectLayer(options.layer);
     if (options?.addKeys && route.view !== 'home') editor.openKeyDialog();
     return;
   }
@@ -375,6 +376,7 @@ function showRoute(initial = false): void {
     const heading = route.view === 'home' ? document.getElementById('projects-title') : null;
     if (heading) heading.focus(); else if (route.view !== 'home') editor.focusHeading();
   }
+  if (options?.layer !== undefined && route.view !== 'home') editor.selectLayer(options.layer);
   if (addKeys) editor.openKeyDialog();
 }
 
