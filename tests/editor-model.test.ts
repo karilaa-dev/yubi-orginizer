@@ -7,7 +7,7 @@ import { catalogMarkup, catalogTotalText, dropIndex, isKeysControl, keysPanelMar
 import { controlValue, trayGroups, settingsPanelMarkup, sizePanelMarkup, snapFitRangeError, withConnection, withTemplate } from '../src/ui/editor-settings';
 import {
   createErrorAnnouncer, downloadButtonState, downloadDialogStatus, fileSizeText, formatNote, generationLabel, gramsText, isOfflineSetupFailure,
-  mobileStatusText, partSelectValue, preparingLabel, previewOverlay, primaryDownloadLabel, printTip,
+  mobileStatusText, partSelectValue, preparingLabel, previewOverlay, primaryDownloadLabel,
 } from '../src/ui/editor-status';
 import { DOCK_CONTROLS, TRAY_CONTROLS } from '../src/ui/settings-model';
 
@@ -150,20 +150,6 @@ describe('Download dialog labels', () => {
     expect(formatNote('3mf', false)).toBe('Open as a project in your slicer to keep these settings.');
     expect(formatNote('stl', true)).toBe('Several parts download as one ZIP.');
     expect(formatNote('scad', false)).toBe('');
-  });
-
-  it('gives one material tip per tray connection', () => {
-    const c = tray();
-    c.options.tray.retention = true;
-    expect(printTip(c)).toBe('Print in PETG so the retention tabs can flex.');
-    c.options.tray.connection = 'h20_slide_v7';
-    expect(printTip(c)).toMatch(/^Use the same material as your H20 reference/);
-    c.options.tray.connection = 'snap_fit';
-    expect(printTip(c)).toBe('Print in PLA or PLA Matte and keep the perimeter channels clear.');
-    c.options.tray.connection = 'none';
-    c.options.tray.retention = false;
-    expect(printTip(c)).toBe('');
-    expect(printTip({ ...tray(), template: 'desktop_dock' })).toBe('');
   });
 });
 

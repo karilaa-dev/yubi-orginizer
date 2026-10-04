@@ -142,8 +142,6 @@ export function downloadParts(format: 'stl' | 'scad', config: HolderConfig, proj
     downloadFile(name, bytes.buffer as ArrayBuffer, format === 'stl' ? 'model/stl' : 'text/plain');
   } else {
     files[PROJECT_ENTRY] = strToU8(projectFileText(config, projectName));
-    const printNotes = trayLockPrintNotes(config, project);
-    if (printNotes.length) files['PRINTING.txt'] = strToU8(printNotes.join('\n'));
     const zipName = `${namedBase(projectName) ?? config.template}-${format}.zip`;
     downloadFile(zipName, zipSync(files, ZIP_OPTIONS).buffer as ArrayBuffer, 'application/zip');
   }

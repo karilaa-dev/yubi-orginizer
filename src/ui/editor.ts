@@ -30,7 +30,7 @@ import { ORGANIZER_TYPE_LOCK_HINT, settingsPanelMarkup, sizePanelMarkup, trayGro
 import {
   FAILED_TEXT, OFFLINE_SETUP_TEXT, STALE_STATES, createErrorAnnouncer, downloadButtonState, downloadDialogStatus, fileSizeText, formatNote,
   generationLabel, gramsText, isOfflineSetupFailure, isZipDownload, mobileStatusText, preparingLabel, previewOverlay,
-  primaryDownloadLabel, printTip, type DownloadFormat, type EditorStatus, type PreviewState,
+  primaryDownloadLabel, type DownloadFormat, type EditorStatus, type PreviewState,
 } from './editor-status';
 import { closeMenu, isMenuOpen, openMenu, type MenuItem } from './menu';
 import { deleteWithUndo, duplicateFromEditor, matchingLayerAvailability, requestPersistentStorage, type ProjectActionsDeps } from './project-actions';
@@ -214,9 +214,8 @@ export function createEditor(env: EditorEnv): Editor {
   const downloadDialog = element<HTMLDialogElement>('download-dialog');
   const formatNoteEl = element('format-note');
   const downloadFileButton = element<HTMLButtonElement>('download-file'), downloadFileLabel = element('download-file-label');
-  const downloadResult = element('download-result'), trayTip = element('tray-print-tip'), dockTip = element('dock-print-tip');
+  const downloadResult = element('download-result'), dockTip = element('dock-print-tip');
   const downloadStateEl = element('download-state'), downloadAnnouncer = element('download-announcer');
-  const assemblyNotes = element<HTMLDetailsElement>('assembly-notes'), lockTip = element('tray-lock-tip');
   const filamentDialog = element<HTMLDialogElement>('filament-dialog'), filamentDetail = element('filament-detail');
 
   const compactQuery = window.matchMedia('(max-width: 760px)');
@@ -435,8 +434,6 @@ export function createEditor(env: EditorEnv): Editor {
     const instructions = session ? trayConnectionInstructions(config).join(' ') : '';
     const helpText = document.getElementById('tray-lock-help-text');
     if (helpText) { helpText.textContent = instructions; helpText.hidden = !instructions; }
-    lockTip.textContent = instructions;
-    assemblyNotes.hidden = !instructions;
   }
 
   function renderTabs(): void {
@@ -1472,21 +1469,17 @@ export function createEditor(env: EditorEnv): Editor {
   const selectedFormat = (): DownloadFormat => (downloadDialog.querySelector<HTMLInputElement>('input[name="format"]:checked')?.value ?? '3mf') as DownloadFormat;
 
   function renderDownloadTips(): void {
-    const tip = printTip(config);
-    trayTip.innerHTML = tip ? `${icon('info')}<span>${esc(tip)}</span>` : '';
-    trayTip.hidden = !tip;
     dockTip.hidden = config.template !== 'desktop_dock';
   }
 
   function renderDownloadDialog(): void {
     const parts = downloadGeometry?.parts ?? [];
     const format = selectedFormat(), total = downloadSource?.parts.length ?? 0;
-    const scope = total > 1 ? `${parts.length} of ${total} layers selected. ` : '';
-    const note = parts.length ? scope + formatNote(format, isZipDownload(format, parts.length)) : 'Select at least one tray or lid to download.';
+    const note = parts.length ? formatNote(format, isZipDownload(format, parts.length)) : 'Select at least one tray or lid to download.';
     formatNoteEl.textContent = note;
     formatNoteEl.hidden = !note;
-    const all = downloadDialog.querySelector<HTMLInputElement>('#download-all-layers');
-    if (all) { all.checked = total > 0 && downloadSelection.size === total; all.indeterminate = downloadSelection.size > 0 && downloadSelection.size < total; }
+    const count = downloadDialog.querySelector('#download-layer-count');
+    if (count) count.textContent = parts.length === total ? `All ${total} selected` : `${parts.length} of ${total} selected`;
     downloadFileButton.disabled = downloadStatus !== 'ready' || !parts.length;
     downloadFileLabel.textContent = downloadStatus === 'generating' ? preparingLabel(downloadProgress) : primaryDownloadLabel(format, parts.length);
     const problem = downloadDialogStatus(downloadStatus, downloadError);
@@ -1603,11 +1596,7 @@ export function createEditor(env: EditorEnv): Editor {
   downloadDialog.addEventListener('change', event => {
     const input = event.target as HTMLInputElement;
     downloadResult.hidden = true;
-    if (input.id === 'download-all-layers') {
-      downloadSelection = new Set(input.checked ? downloadSource?.parts.map(p => p.id) : []);
-      for (const checkbox of downloadDialog.querySelectorAll<HTMLInputElement>('[data-download-part]')) checkbox.checked = input.checked;
-      void prepareDownload();
-    } else if (input.dataset.downloadPart) {
+    if (input.dataset.downloadPart) {
       if (input.checked) downloadSelection.add(input.dataset.downloadPart); else downloadSelection.delete(input.dataset.downloadPart);
       void prepareDownload();
     } else renderDownloadDialog();

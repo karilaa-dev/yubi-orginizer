@@ -161,13 +161,3 @@ export function formatNote(format: DownloadFormat, zip: boolean): string {
   if (format === '3mf') return 'Open as a project in your slicer to keep these settings.';
   return zip ? 'Several parts download as one ZIP.' : '';
 }
-
-/** One-line material tip for trays ('' for none). */
-export function printTip(config: HolderConfig): string {
-  if (config.template !== 'inventory_tray') return '';
-  const tray = config.options.tray;
-  if (tray.connection === 'h20_slide_v7') return 'Use the same material as your H20 reference. Pins up, lid flat side down, no supports in the receivers.';
-  if (tray.connection === 'snap_fit') return 'Print in PLA or PLA Matte and keep the perimeter channels clear.';
-  if (tray.retention) return 'Print in PETG so the retention tabs can flex.';
-  return '';
-}

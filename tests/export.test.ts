@@ -217,20 +217,24 @@ describe('recoverable browser downloads', () => {
     expect(links[0].remove).toHaveBeenCalledOnce();
   });
 
-  it('downloads both enclosure parts with instructions, or a single replacement lid', async () => {
+  it.each(['stl', 'scad'] as const)('downloads only %s parts and the project, or a single replacement lid', async format => {
     const { downloadParts, create, events } = await browserFixture();
     const config = defaultConfig(); config.template = 'inventory_tray';
     Object.assign(config.options.tray, { connection: 'snap_fit', lid: true });
     const project = buildProject(config);
     const meshes = new Map(project.parts.map(p => [p.id, new Uint8Array([1, 2, 3]).buffer]));
-    downloadParts('stl', config, project, meshes);
+    downloadParts(format, config, project, meshes);
     const archive = create.mock.calls[0][0] as Blob;
     const files = unzipSync(new Uint8Array(await archive.arrayBuffer()));
-    expect(Object.keys(files).sort()).toEqual(['PRINTING.txt', 'project.yubi-orginizer.json', 'tray-lid.stl', 'tray.stl']);
-    expect(strFromU8(files['PRINTING.txt'])).toContain(TRAY_SNAP_INSTRUCTIONS);
-    downloadParts('stl', config, project, meshes, 'tray-lid');
-    expect(events.at(-1)?.name).toBe('tray-lid.stl');
+    expect(Object.keys(files).sort()).toEqual(['project.yubi-orginizer.json', `tray-lid.${format}`, `tray.${format}`]);
+    for (const part of project.parts) {
+      if (format === 'stl') expect(files[`${part.id}.stl`]).toEqual(new Uint8Array(meshes.get(part.id)!));
+      else expect(strFromU8(files[`${part.id}.scad`])).toBe(part.scad);
+    }
+    downloadParts(format, config, project, meshes, 'tray-lid');
+    expect(events.at(-1)?.name).toBe(`tray-lid.${format}`);
     const replacement = create.mock.calls[1][0] as Blob;
-    expect(new Uint8Array(await replacement.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
+    if (format === 'stl') expect(new Uint8Array(await replacement.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
+    else expect(await replacement.text()).toBe(project.parts.find(p => p.id === 'tray-lid')!.scad);
   });
 });

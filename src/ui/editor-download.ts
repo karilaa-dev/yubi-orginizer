@@ -1,6 +1,6 @@
 /**
  * Download dialog (#download-dialog) and Add keys dialog (#key-dialog) markup. The editor fills
- * in parts, tips and labels from the pure helpers in editor-status.ts.
+ * in parts and labels from the pure helpers in editor-status.ts.
  */
 import { icon } from '../icons';
 import { dialogHeading } from './app-dialogs';
@@ -13,14 +13,13 @@ import { projectThumbnail, lidThumbnail } from './organizer-thumbnail';
 export function downloadLayersMarkup(config: HolderConfig): string {
   if (config.template !== 'inventory_tray') return '';
   const items = traySetItems(config).reverse();
-  if (items.length < 2) return '';
-  return `<fieldset class="download-layers"><legend>Layers to download</legend>
-    <label class="download-all"><input type="checkbox" id="download-all-layers" checked/>All layers</label>
+  return `<details class="download-layers">
+    <summary>${icon('down')}<span>Layers to download</span><span id="download-layer-count">All ${items.length} selected</span></summary>
     <div class="download-layer-list">${items.map(item => `<label class="download-layer-row">
       <input type="checkbox" data-download-part="${item.id}" checked aria-label="Download ${esc(item.name)}"/>
       <span class="layer-thumbnail" aria-hidden="true">${item.kind === 'lid' ? lidThumbnail(item.config) : projectThumbnail(item.config)}</span>
       <span class="layer-copy"><strong>${esc(item.name)}</strong><small>${item.kind === 'lid' ? 'Lid' : plural(item.config.slots.length, 'key')}</small></span>
-    </label>`).join('')}</div></fieldset>`;
+    </label>`).join('')}</div></details>`;
 }
 
 const FORMATS = [
@@ -49,9 +48,7 @@ export function downloadDialogMarkup(): string {
       </section>
       <div id="download-layers"></div>
       <fieldset class="format-options"><legend class="sr-only">File format</legend>${formats}</fieldset>
-      <p id="tray-print-tip" class="callout" hidden></p>
       <p id="dock-print-tip" class="callout warn" hidden>${icon('alert')}<span>${DOCK_NOTICE}</span></p>
-      <details id="assembly-notes" class="assembly-notes" hidden><summary>${icon('down')}Assembly notes</summary><p id="tray-lock-tip"></p></details>
       <div id="download-state" class="callout" hidden></div>
       <p id="format-note" class="field-hint"></p>
     </div>
