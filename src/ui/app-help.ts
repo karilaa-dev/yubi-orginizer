@@ -70,6 +70,11 @@ export function helpDialogMarkup(build: BuildInfo): string {
         <p id="help-install" class="help-install" hidden><button type="button" class="button secondary" data-action="install">Install app</button></p>
         <p id="ios-install-note" hidden>${esc(IOS_INSTALL_NOTE)}</p>
       </section>
+      <section aria-labelledby="help-undo">
+        <h3 id="help-undo">Undo &amp; redo</h3>
+        <p>Use the Undo and Redo buttons beside the project name, or Ctrl+Z to undo and Ctrl+Shift+Z or Ctrl+Y to redo. On Mac, use ⌘Z and ⌘⇧Z.</p>
+        <p>Undo covers keys, settings, names and layers while a project is open. Typing in a text field keeps its usual undo. Opening another project or reloading starts a new history.</p>
+      </section>
       <section aria-labelledby="help-changes">
         <h3 id="help-changes">What changed</h3>
         <ul>

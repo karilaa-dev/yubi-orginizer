@@ -481,6 +481,135 @@ describe('project session', () => {
     expect(resolveStartupProject(local, tab)).toMatchObject({ project: { id: session.id }, reason: 'tab' });
   });
 
+  it('keeps generated names following template changes through undo and redo after autosave', () => {
+    const { storage, writes } = instrumented();
+    const session = new ProjectSession(storage, createProject(storage, { config: tray() }));
+    const initial = { name: session.name, autoName: session.autoName, config: session.config };
+    session.edit({ ...session.config, template: 'desktop_dock' });
+    // Editor history is recorded before the debounced save updates the generated name.
+    const switched = { name: session.name, autoName: session.autoName, config: session.config };
+    expect(switched.name).toBe('Inventory tray');
+    session.flush();
+    expect(session.name).toBe('Desktop dock');
+
+    writes.length = 0;
+    session.restoreName(initial.name, initial.autoName, initial.config.template);
+    expect(writes).toEqual([]);
+    session.edit(initial.config);
+    session.flush();
+    expect(session.record).toMatchObject({ name: 'Inventory tray', autoName: true, config: { template: 'inventory_tray' } });
+
+    session.restoreName(switched.name, switched.autoName, switched.config.template);
+    session.edit(switched.config);
+    session.flush();
+    expect(session.record).toMatchObject({ name: 'Desktop dock', autoName: true, config: { template: 'desktop_dock' } });
+  });
+
+  it('restores automatic ownership when a project rename is undone, and custom ownership on redo', () => {
+    const storage = createMemoryStorage();
+    const saved = vi.fn();
+    const project = createProject(storage, { config: tray() }, at(0));
+    const session = new ProjectSession(storage, project, { onSaved: saved });
+    session.rename('Desk');
+    expect(session.autoName).toBe(false);
+    session.restoreName(project.name, true, project.config.template);
+    expect(session.record).toMatchObject({ name: 'Inventory tray', autoName: true, rev: project.rev, updatedAt: project.updatedAt });
+    expect(saved).toHaveBeenLastCalledWith(expect.objectContaining({ name: 'Inventory tray', autoName: true }));
+    session.edit({ ...session.config, template: 'desktop_dock' });
+    session.flush();
+    expect(session.name).toBe('Desktop dock');
+
+    session.restoreName('Desk', false, 'inventory_tray');
+    session.edit({ ...session.config, template: 'inventory_tray' });
+    session.flush();
+    expect(session.record).toMatchObject({ name: 'Desk', autoName: false, config: { template: 'inventory_tray' } });
+  });
+
+  it('restores name ownership even when the visible name stays the same', () => {
+    const storage = createMemoryStorage();
+    const session = new ProjectSession(storage, createProject(storage, { config: tray() }));
+    session.restoreName('Inventory tray', false, 'inventory_tray');
+    expect(session.autoName).toBe(false);
+    session.restoreName('Inventory tray', true, 'inventory_tray');
+    expect(session.record).toMatchObject({ name: 'Inventory tray', autoName: true });
+    expect(getProject(storage, session.id!)).toMatchObject({ name: 'Inventory tray', autoName: true });
+  });
+
+  it('restores a free generated name for the target template instead of reusing stale history text', () => {
+    const storage = createMemoryStorage();
+    createProject(storage, { config: dock() });
+    const session = new ProjectSession(storage, createProject(storage, { config: tray(), name: 'Desk' }));
+    session.restoreName('Inventory tray', true, 'desktop_dock');
+    expect(session.name).toBe('Desktop dock 2');
+    session.edit({ ...session.config, template: 'desktop_dock' });
+    session.flush();
+    expect(session.record).toMatchObject({ name: 'Desktop dock 2', autoName: true });
+  });
+
+  it('restores a draft to automatic naming without creating a project', () => {
+    const storage = createMemoryStorage();
+    const session = new ProjectSession(storage, { config: tray(), name: 'Draft' });
+    expect(session.autoName).toBe(false);
+    session.restoreName('Inventory tray', true, 'inventory_tray');
+    expect(session.autoName).toBe(true);
+    expect(session.name).toBe('Inventory tray');
+    expect(session.persisted).toBe(false);
+    expect(listProjects(storage).projects).toEqual([]);
+    session.edit({ ...session.config, template: 'desktop_dock' });
+    session.flush();
+    expect(session.record).toMatchObject({ name: 'Desktop dock', autoName: true });
+  });
+
+  it('leaves custom name ownership intact if saving its undo fails', () => {
+    const { storage, failWith } = instrumented();
+    const session = new ProjectSession(storage, createProject(storage, { config: tray(), name: 'Desk' }));
+    failWith(() => quota());
+    expect(() => session.restoreName('Inventory tray', true, 'inventory_tray')).toThrow(expect.objectContaining({ code: 'quota' }));
+    expect(session.record).toMatchObject({ name: 'Desk', autoName: false });
+    expect(getProject(storage, session.id!)).toMatchObject({ name: 'Desk', autoName: false });
+  });
+
+  it('notifies other windows when name ownership changes without changing the visible name', () => {
+    const storage = createMemoryStorage();
+    const project = createProject(storage, { config: tray() });
+    const remote = vi.fn();
+    const reader = new ProjectSession(storage, project, { onRemoteChange: remote });
+    const writer = new ProjectSession(storage, project);
+    writer.restoreName(project.name, false, 'inventory_tray');
+    reader.sync();
+    expect(reader.autoName).toBe(false);
+    expect(remote).toHaveBeenLastCalledWith(expect.objectContaining({ name: project.name, autoName: false }), { configChanged: false, discardedLocalEdit: false });
+    writer.restoreName(project.name, true, 'inventory_tray');
+    reader.sync();
+    expect(reader.autoName).toBe(true);
+    expect(remote).toHaveBeenLastCalledWith(expect.objectContaining({ name: project.name, autoName: true }), { configChanged: false, discardedLocalEdit: false });
+    expect(remote).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects history name writes based on an older configuration revision', () => {
+    for (const autoName of [true, false]) {
+      const storage = createMemoryStorage();
+      const project = createProject(storage, { config: tray(), ...(autoName ? { name: 'Desk' } : {}) });
+      const local = new ProjectSession(storage, project);
+      const remoteConfig = structuredClone(project.config);
+      remoteConfig.options.tray.margin = 15;
+      const remote = updateProjectConfig(storage, project.id, remoteConfig, { baseRev: project.rev });
+
+      expect(() => local.restoreName(autoName ? 'Inventory tray' : 'Office', autoName, 'inventory_tray'))
+        .toThrow(expect.objectContaining({ code: 'conflict', current: remote }));
+      expect(local.record).toEqual(project);
+      expect(local.config).toEqual(project.config);
+      expect(getProject(storage, project.id)).toEqual(remote);
+
+      // A later config write still detects and adopts the remote version; the rejected
+      // name restoration did not advance the local base revision.
+      local.edit(project.config);
+      expect(local.flush()).toBe(true);
+      expect(local.config).toEqual(remoteConfig);
+      expect(getProject(storage, project.id)).toEqual(remote);
+    }
+  });
+
   it('adopts newer edits from another window and lets the first committed write win', () => {
     const s = createMemoryStorage();
     const p = createProject(s, { config: tray() });

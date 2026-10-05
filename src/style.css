@@ -242,6 +242,7 @@ body[data-view=editor] .page { padding: 20px 24px; }
 .save-state[data-tone=error], .save-state[data-tone=warn] { color: var(--error); font-weight: 500; }
 .save-state .text-button { margin-left: 4px; }
 .editor-bar-end { display: flex; flex: none; align-items: center; gap: 8px; margin-left: auto; }
+.history-actions { display: flex; align-items: center; gap: 2px; }
 .download-button { min-width: 132px; }
 .rename-error { margin-top: -6px; }
 .remote-banner { align-items: center; flex-wrap: wrap; }
@@ -980,6 +981,9 @@ input.key-label { width: 100%; height: 34px; padding: 0 8px; font-weight: 600; }
   body[data-view=editor] .page { padding: 0 16px calc(80px + env(safe-area-inset-bottom)); }
   .editor { gap: 0; }
   .editor-bar { gap: 4px; min-height: 52px; }
+  .editor-bar-end { gap: 2px; }
+  .editor-bar:has(.save-state[data-tone=warn], .save-state[data-tone=error]) { flex-wrap: wrap; }
+  .save-state[data-tone=warn], .save-state[data-tone=error] { order: 1; flex-basis: 100%; padding-left: 32px; margin: -4px 0 8px; white-space: normal; }
   .back-link { justify-content: center; width: 40px; height: 40px; margin-left: -8px; padding: 0; }
   .back-link .icon { width: 20px; height: 20px; }
   .back-text { display: none; }

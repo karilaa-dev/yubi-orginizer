@@ -426,12 +426,19 @@ document.addEventListener('click', event => {
 });
 
 document.addEventListener('keydown', event => {
-  if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
+  if (event.defaultPrevented || event.isComposing || !(event.ctrlKey || event.metaKey) || event.altKey) return;
   const key = shortcutLetter(event);
-  // Ctrl/Cmd+Z runs the toast's Undo (never Open, Update…); text fields keep their own undo.
-  if (key === 'z' && !isTextEntry(event.target)) {
-    if (runToastAction()) event.preventDefault();
-  } else if (key === 's' && !editorRoot.hidden && editor.session) {
+  const undo = key === 'z' && !event.shiftKey;
+  const redo = (key === 'z' && event.shiftKey) || (key === 'y' && event.ctrlKey && !event.metaKey && !event.shiftKey);
+  // Text fields retain native undo; only Add keys edits the design inside a modal.
+  if ((undo || redo) && !isTextEntry(event.target)) {
+    const modal = document.querySelector('dialog[open]');
+    if (!editorRoot.hidden && editor.session) {
+      if (modal && modal.id !== 'key-dialog') return;
+      event.preventDefault();
+      if (undo) editor.undo(); else editor.redo();
+    } else if (undo && runToastAction()) event.preventDefault();
+  } else if (key === 's' && !event.shiftKey && !editorRoot.hidden && editor.session) {
     event.preventDefault();
     editor.saveShortcut();
   }

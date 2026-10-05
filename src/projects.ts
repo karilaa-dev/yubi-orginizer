@@ -714,6 +714,7 @@ export class ProjectSession {
   get pending(): boolean { return this.#pending; }
   get persisted(): boolean { return this.#record !== undefined; }
   get blocked(): 'deleted' | 'missing' | undefined { return this.#blocked; }
+  get autoName(): boolean { return this.#record?.autoName ?? this.#draftName === undefined; }
   get name(): string {
     if (this.#record) return this.#record.name;
     if (this.#draftName) return this.#draftName;
@@ -777,6 +778,29 @@ export class ProjectSession {
     return this.#record;
   }
 
+  /** Restores history's name ownership; generated names continue to follow configuration edits. */
+  restoreName(name: string, autoName: boolean, template: TemplateId): void {
+    // History may have captured the name before the previous template edit was autosaved.
+    // Keep automatic ownership and let the next configuration write choose the right name.
+    if (autoName ? this.autoName : !this.autoName && this.name === name) return;
+    const current = this.#record ? requireLive(this.#storage, this.#record.id) : undefined;
+    // Updating name metadata must not advance our base revision to a remote config that
+    // history's following edit would then silently overwrite.
+    if (current && current.rev !== this.#record!.rev) throw new ProjectStoreError('conflict', MESSAGES.conflict, current);
+    if (!autoName) {
+      this.rename(name);
+      return;
+    }
+    if (!current) {
+      this.#draftName = undefined;
+      this.#suggested = undefined;
+      return;
+    }
+    const generated = defaultProjectName(template, liveNames(this.#storage, current.id));
+    this.#record = writeRecord(this.#storage, { ...current, name: generated, autoName: true }, new Date());
+    this.#events.onSaved?.(this.#record);
+  }
+
   /** After onRemoteDelete: bring the project back (or save a new one if it was removed) and write pending edits. */
   restore(): ProjectRecord {
     if (!this.#record || this.#blocked === 'missing') return this.saveAsNew();
@@ -812,7 +836,7 @@ export class ProjectSession {
     this.#blocked = undefined;
     // First committed write wins: another window saved a newer config, so show it.
     if (current.rev !== this.#record.rev) { this.#adopt(current, this.#pending); return; }
-    const renamed = current.name !== this.#record.name;
+    const renamed = current.name !== this.#record.name || current.autoName !== this.#record.autoName;
     this.#record = current;
     if (renamed || wasBlocked) this.#events.onRemoteChange?.(current, { configChanged: false, discardedLocalEdit: false });
     if (wasBlocked && this.#pending) this.flush();

@@ -70,12 +70,18 @@ service worker; the development server does not install the offline app.
    Selecting the lid renames **Tray settings** to **Lid settings**, containing its style,
    text, text size and rotation. New layers start at minimum spacing with
    retention tabs off; duplicating a layer preserves its settings.
-6. Changes save automatically; the editor bar shows **Saved**. Select the project
+6. Use **Undo** and **Redo** in the editor bar to revert keys, settings, names and
+   layer changes. Shortcuts: **Ctrl+Z** / **Ctrl+Shift+Z** (or **Ctrl+Y**),
+   **⌘Z** / **⌘⇧Z** on Mac. Continuous typing and slider drags count as one edit;
+   text fields keep native typing undo. The last 100 edits are available while
+   the project stays open; reopening, reloading or adopting changes from another
+   window starts a fresh history.
+7. Changes save automatically; the editor bar shows **Saved**. Select the project
    name to rename it. The **⋯** project menu offers Rename, Duplicate,
    **New matching layer**, **Save project file (.json)** and Delete. Deleting can
    be undone, and deleted projects stay under **Recently deleted** on the
    Projects page for 30 days.
-7. Inspect the preview and use **Explode** to view separate parts. Choose
+8. Inspect the preview and use **Explode** to view separate parts. Choose
    **Download**, select the parts and export format, then inspect the file in
    your slicer before printing. Download starts with every tray and lid selected,
    regardless of the preview. Toggle individual items in **Layers to download**. **Save project file (.json)**

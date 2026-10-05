@@ -24,9 +24,10 @@ import type { HolderConfig, KeyType, ProjectGeometry, TemplateId } from '../type
 import { openDialog } from './app-dialogs';
 import { filamentDetailMarkup } from './app-help';
 import { esc, plural } from './dom';
+import { EditHistory } from './edit-history';
 import { captureFocus, clearFieldError, controlInputs, fieldErrorText, restoreFocus, showFieldError } from './editor-fields';
-import { catalogMarkup, catalogTotalText, dropIndex, isKeysControl, keysPanelMarkup, reinsertSlot, removeOneOfType, removedMessage } from './editor-keys';
-import { ORGANIZER_TYPE_LOCK_HINT, settingsPanelMarkup, sizePanelMarkup, trayGroups, snapFitRangeError, syncSettingsPanel, withConnection, withTemplate, type SyncMemory } from './editor-settings';
+import { catalogMarkup, catalogTotalText, dropIndex, isKeysControl, keysPanelMarkup, removeOneOfType, removedMessage } from './editor-keys';
+import { ORGANIZER_TYPE_LOCK_HINT, settingsPanelMarkup, sizePanelMarkup, trayGroups, snapFitRangeError, syncSettingsPanel, withTemplate, type SyncMemory } from './editor-settings';
 import {
   FAILED_TEXT, OFFLINE_SETUP_TEXT, STALE_STATES, createErrorAnnouncer, downloadButtonState, downloadDialogStatus, fileSizeText, formatNote,
   generationLabel, gramsText, isOfflineSetupFailure, isZipDownload, mobileStatusText, preparingLabel, previewOverlay,
@@ -37,7 +38,7 @@ import { deleteWithUndo, duplicateFromEditor, matchingLayerAvailability, request
 import {
   DEFAULT_OPEN_GROUPS, groupOfControl, panelOfControl, traySettingsState, type FootprintMatch, type MatchState, type Panel,
 } from './settings-model';
-import { toast } from './toast';
+import { hideToast, toast } from './toast';
 
 export type { Panel } from './settings-model';
 export type RenderScope = 'none' | 'keys' | 'settings' | 'all';
@@ -75,6 +76,8 @@ export interface Editor {
   applyPrefs(): void;
   setTheme(theme: 'light' | 'dark'): void;
   saveShortcut(): void;
+  undo(): boolean;
+  redo(): boolean;
   documentTitle(): string;
 }
 
@@ -96,6 +99,10 @@ export function editorMarkup(): string {
       <h1 id="project-title" class="project-title" tabindex="-1"></h1>
       <span id="save-state" class="save-state"></span>
       <span class="editor-bar-end">
+        <span class="history-actions" role="group" aria-label="Edit history">
+          <button type="button" id="undo" class="icon-button" data-action="undo" aria-label="Undo" title="Undo (Ctrl+Z / ⌘Z)" aria-keyshortcuts="Control+z Meta+z" disabled>${icon('undo')}</button>
+          <button type="button" id="redo" class="icon-button" data-action="redo" aria-label="Redo" title="Redo (Ctrl+Shift+Z / ⌘⇧Z / Ctrl+Y)" aria-keyshortcuts="Control+Shift+z Meta+Shift+z Control+y" disabled>${icon('redo')}</button>
+        </span>
         <button type="button" id="project-menu" class="icon-button" aria-label="Project actions" aria-haspopup="menu" aria-expanded="false">${icon('more')}</button>
         <button type="button" id="download" class="button primary download-button" data-action="download">${icon('download')}<span class="download-label">Download</span></button>
       </span>
@@ -201,6 +208,7 @@ export function createEditor(env: EditorEnv): Editor {
   const titleEl = element('project-title'), saveStateEl = element('save-state');
   const renameError = element('rename-error'), remoteBanner = element('remote-banner');
   const projectMenuButton = element<HTMLButtonElement>('project-menu');
+  const undoButton = element<HTMLButtonElement>('undo'), redoButton = element<HTMLButtonElement>('redo');
   const downloadButtons = [element<HTMLButtonElement>('download'), element<HTMLButtonElement>('download-mobile')];
   const mobileStatus = element('mobile-status');
   const card = element('preview-card'), viewer = element('viewer'), chip = element('generation-status');
@@ -239,6 +247,19 @@ export function createEditor(env: EditorEnv): Editor {
   let config: HolderConfig = { ...defaultConfig(), slots: [] };
   let panel: Panel = 'keys';
   let activeLayer = 0, allLayers = false, activeLid = false;
+  interface EditSnapshot {
+    config: HolderConfig;
+    pendingResize?: HolderConfig;
+    name: string;
+    autoName: boolean;
+    layer: number;
+    lid: boolean;
+    panel: Panel;
+    allLayers: boolean;
+  }
+  const editContent = (snapshot: EditSnapshot): string => JSON.stringify([snapshot.config, snapshot.pendingResize, snapshot.autoName, snapshot.autoName ? undefined : snapshot.name]);
+  const history = new EditHistory<EditSnapshot>((a, b) => editContent(a) === editContent(b));
+  let editVersion = 0;
   let renamingLayer = 0;
   const panelScroll: Record<Panel, number> = { keys: 0, size: 0, settings: 0, layers: 0 };
   /** Size › Footprint › Match project: not part of the config, so it lasts while the project is open. */
@@ -321,6 +342,7 @@ export function createEditor(env: EditorEnv): Editor {
     },
     onRemoteChange: (_record, change) => {
       if (!session) return;
+      clearHistory();
       if (!session.blocked) hideRemoteBanner();
       if (change.configChanged) {
         pendingResize = undefined;
@@ -343,10 +365,91 @@ export function createEditor(env: EditorEnv): Editor {
 
   /* ───────────── Change pipeline ───────────── */
 
-  function changed(next: HolderConfig, options: { render?: RenderScope; touch?: boolean } = {}): void {
+  function captureEdit(): EditSnapshot {
+    return structuredClone({ config: session!.config, pendingResize, name: session!.name, autoName: session!.autoName, layer: activeLayer, lid: activeLid, panel, allLayers });
+  }
+
+  function renderHistory(): void {
+    undoButton.disabled = !session || !history.canUndo;
+    redoButton.disabled = !session || !history.canRedo;
+  }
+
+  function clearHistory(): void {
+    history.clear();
+    editVersion++;
+    renderHistory();
+  }
+
+  function recordEdit(before: EditSnapshot, group?: string): void {
+    const after = captureEdit();
+    if (editContent(before) === editContent(after)) return;
+    history.record(before, after, group);
+    editVersion++;
+    renderHistory();
+  }
+
+  function travelHistory(direction: 'undo' | 'redo'): boolean {
+    if (!session) return false;
+    const snapshot = history[direction]();
+    if (!snapshot) return false;
+    try {
+      session.restoreName(snapshot.name, snapshot.autoName, snapshot.config.template);
+      // A pending size proposal has its own last accepted config. Restore both, so
+      // Cancel still returns to the design that preceded the proposal.
+      session.edit(snapshot.config);
+    } catch (error) {
+      history[direction === 'undo' ? 'redo' : 'undo']();
+      if (error instanceof ProjectStoreError && error.code === 'conflict') session.sync();
+      toast(errorText(error));
+      return false;
+    }
+    pendingResize = snapshot.pendingResize;
+    activeLayer = Math.min(snapshot.layer, projectLayers(workingProject()).length - 1);
+    config = projectLayers(workingProject())[activeLayer].config;
+    activeLid = snapshot.lid && config.options.tray.lid;
+    panel = snapshot.panel;
+    allLayers = snapshot.allLayers;
+    match = undefined;
+    dragging = undefined;
+    inputErrors.clear();
+    clearPendingErrors();
+    memory.errorGroups.clear();
+    errorAnnouncer.reset();
+    renameError.hidden = true;
+    closeMenu(false);
+    hideToast();
+    editVersion++;
+    update('all');
+    renderHistory();
+    if (keyDialog.open) refreshCatalog();
+    syncPreviewFocus();
+    invalidate();
+    env.onProjectChange();
+    // Keep keyboard focus useful when the undone action removed its control.
+    if (!keyDialog.open && (!document.activeElement || document.activeElement === document.body || (document.activeElement as HTMLButtonElement).disabled)) tabOf(panel).focus();
+    const announcement = direction === 'undo' ? 'Change undone.' : 'Change redone.';
+    announce(keyDialog.open ? catalogTotal : reorderAnnouncer, keyDialog.open ? `${announcement} ${catalogTotalText(config.slots.length)}.` : announcement);
+    return true;
+  }
+
+  /** Toast buttons and keyboard/toolbar Undo share the same history entry. */
+  function offerUndo(message: string): void {
+    const owner = session, version = editVersion;
+    toast(message, { action: { label: 'Undo', shortcut: false, run: () => {
+      if (session === owner && editVersion === version) travelHistory('undo');
+      else toast('Use Undo to revert the most recent changes first.');
+    } } });
+  }
+
+  // One field interaction is one history step, including a whole slider drag.
+  panelBody.addEventListener('focusout', () => history.breakGroup());
+  panelBody.addEventListener('change', () => history.breakGroup());
+
+  function changed(next: HolderConfig, options: { render?: RenderScope; touch?: boolean; group?: string } = {}): void {
     const s = session;
     if (!s) return;
     const touch = options.touch ?? true;
+    const before = touch ? captureEdit() : undefined;
     const project = replaceLayer(workingProject(), activeLayer, validateConfig(next));
     config = projectLayers(project)[activeLayer].config;
     if (project.template === 'inventory_tray' && traySetLayout(project).tooSmall) {
@@ -357,6 +460,7 @@ export function createEditor(env: EditorEnv): Editor {
     }
     allLayers = false;
     syncPreviewFocus();
+    if (before) recordEdit(before, options.group);
     // A new project is created on its first real edit; onSaved then switches the URL to #/p/<id>.
     if (!s.persisted && touch && !pendingResize) s.flush();
     update(options.render ?? 'none');
@@ -541,7 +645,8 @@ export function createEditor(env: EditorEnv): Editor {
     renderedName = undefined;
     let error = '';
     if (commit && session && value && value !== session.name) {
-      try { session.rename(value); }
+      const before = captureEdit();
+      try { session.rename(value); recordEdit(before); }
       catch (e) { error = renameErrorText(e); }
     }
     renderTitle();
@@ -657,28 +762,19 @@ export function createEditor(env: EditorEnv): Editor {
     if (!pendingErrors.size) clearTimeout(pendingTimer);
     inputErrors.delete(field);
     clearFieldError(root, field);
-    const previous = config, owner = session, ownerLayer = activeLayer;
+    const previous = config;
     const replacedSnap = field === 'tray.connection' && previous.options.tray.connection === 'snap_fit' && next.options.tray.connection !== 'snap_fit';
     if (field === 'tray.lid' && next.options.tray.lid && !previous.options.tray.lid) setExploded(true);
-    changed(next, { render: replacedSnap ? 'settings' : field === 'labels' ? 'settings' : 'none' });
+    changed(next, {
+      render: replacedSnap ? 'settings' : field === 'labels' ? 'settings' : 'none',
+      group: ['range', 'number', 'text'].includes(input.type) ? `${activeLayer}:${field}` : undefined,
+    });
     // Keep the other input of the same option (number ↔ range) in step.
     for (const other of root.querySelectorAll<HTMLInputElement>(`[data-option="${field}"]`)) {
       if (other === input || other.type === 'radio' || other.type === 'checkbox') continue;
       other.value = input.value;
     }
-    if (replacedSnap) {
-      toast('Replaced snap-fit.', {
-        action: {
-          label: 'Undo',
-          run: () => {
-            // Only the connection goes back: keys and settings edited since the replacement stay.
-            if (session !== owner || activeLayer !== ownerLayer || config.options.tray.connection === 'snap_fit') return;
-            changed(withConnection(config, 'snap_fit'), { render: 'settings' });
-            focusAfterUndo('[data-option="tray.connection"]:checked');
-          },
-        },
-      });
-    }
+    if (replacedSnap) offerUndo('Replaced snap-fit.');
   }
 
   /** Shows the range errors of number fields that were held back while typing. */
@@ -702,32 +798,9 @@ export function createEditor(env: EditorEnv): Editor {
   function switchTemplate(template: TemplateId): void {
     if (!session || template === config.template) return;
     if (projectLayers(session.config).length > 1) { toast(ORGANIZER_TYPE_LOCK_HINT); update('keys'); return; }
-    const previousTemplate = config.template, owner = session;
     setExploded(true);
     changed(withTemplate(config, template), { render: 'all' });
-    toast(`Switched to ${templateName(template)}.`, {
-      action: {
-        label: 'Undo',
-        run: () => {
-          // Only the type goes back: keys added and settings changed since the switch stay.
-          if (session !== owner || config.template !== template) return;
-          setExploded(true);
-          changed(withTemplate(config, previousTemplate), { render: 'all' });
-          focusAfterUndo('[data-template-switch]:checked');
-        },
-      },
-    });
-  }
-
-  /** After a toast Undo the focused toast button is gone: move focus to the control the Undo restored. */
-  function focusAfterUndo(selector: string): void {
-    const active = document.activeElement;
-    if (active && active !== document.body && active.isConnected) return; // e.g. Ctrl+Z in the editor: update() kept focus
-    const target = panelBody.querySelector<HTMLElement>(selector);
-    const summary = target?.closest('details')?.querySelector<HTMLElement>(':scope > summary'); // its group is collapsed
-    if (isShown(target)) target.focus();
-    else if (isShown(summary)) summary.focus();
-    else tabOf(panel).focus();
+    offerUndo(`Switched to ${templateName(template)}.`);
   }
 
   function setFootprint(kind: 'lock' | 'grow' | 'auto'): void {
@@ -788,6 +861,7 @@ export function createEditor(env: EditorEnv): Editor {
     if (!session || !canLeaveLayer()) return;
     const layer = projectLayers(session.config)[index];
     if (!layer) return;
+    history.breakGroup();
     activeLayer = index;
     activeLid = lid && layer.config.options.tray.lid;
     allLayers = false;
@@ -805,9 +879,11 @@ export function createEditor(env: EditorEnv): Editor {
 
   function editLayers(next: HolderConfig, index: number, lid = false): void {
     if (!session) return;
+    const before = captureEdit();
     session.edit(next);
-    if (!session.persisted) session.flush();
     selectLayer(index, lid);
+    recordEdit(before);
+    if (!session.persisted) session.flush();
     invalidate();
   }
 
@@ -836,14 +912,11 @@ export function createEditor(env: EditorEnv): Editor {
   function lidMenu(button: HTMLElement, index: number): void {
     openMenu(button, [{ label: 'Remove lid', icon: 'trash', danger: true, run: () => {
       if (!session || !canLeaveLayer()) return;
-      const owner = session, before = structuredClone(session.config);
+      const before = structuredClone(session.config);
       const next = structuredClone(projectLayers(before)[index].config);
       next.options.tray.lid = false;
       editLayers(replaceLayer(before, index, next), index);
-      const after = JSON.stringify(session.config);
-      toast('Removed lid.', { action: { label: 'Undo', run: () => {
-        if (session === owner && JSON.stringify(session.config) === after) editLayers(before, index, true);
-      } } });
+      offerUndo('Removed lid.');
     } }], 'Lid actions');
   }
 
@@ -851,12 +924,14 @@ export function createEditor(env: EditorEnv): Editor {
     if (!session || !canLeaveLayer()) return;
     const next = moveLayer(session.config, from, to);
     if (next === session.config) return;
+    const before = captureEdit();
     const count = projectLayers(next).length;
     activeLayer = activeLid ? count - 1 : activeLayer === from ? to
       : from < activeLayer && to >= activeLayer ? activeLayer - 1
       : from > activeLayer && to <= activeLayer ? activeLayer + 1 : activeLayer;
     session.edit(next);
     config = projectLayers(next)[activeLayer].config;
+    recordEdit(before);
     update('all');
     invalidate();
     announce(reorderAnnouncer, `Moved tray to position ${count - to} of ${count}, from the top. The lid stays on top.`);
@@ -879,15 +954,11 @@ export function createEditor(env: EditorEnv): Editor {
       { label: 'Move toward top', icon: 'up', disabled: index === layers.length - 1, run: () => reorderLayer(index, index + 1) },
       { label: 'Remove layer', icon: 'trash', danger: true, disabled: layers.length === 1, run: () => {
         if (!session || !canLeaveLayer()) return;
-        const owner = session, before = structuredClone(session.config);
+        const before = structuredClone(session.config);
         const removed = projectLayers(before)[index];
         const next = removeLayer(before, index);
         editLayers(next, Math.min(index, projectLayers(next).length - 1));
-        const after = JSON.stringify(session.config);
-        toast(`Removed “${removed.name}”.`, { action: { label: 'Undo', run: () => {
-          if (session !== owner || JSON.stringify(session.config) !== after) { toast('The tray set changed, so Undo was skipped.'); return; }
-          editLayers(before, index);
-        } } });
+        offerUndo(`Removed “${removed.name}”.`);
       } },
     ], 'Layer actions');
   }
@@ -898,7 +969,7 @@ export function createEditor(env: EditorEnv): Editor {
     const layers = projectLayers(session.config);
     if (!layers[renamingLayer]) return;
     layers[renamingLayer] = { ...layers[renamingLayer], name: element<HTMLInputElement>('layer-name-input').value };
-    try { session.edit(withLayers(layers)); renderLayers(); invalidate(); element<HTMLDialogElement>('layer-rename-dialog').close(); }
+    try { editLayers(withLayers(layers), activeLayer, activeLid); element<HTMLDialogElement>('layer-rename-dialog').close(); }
     catch (error) { element('layer-rename-error').textContent = errorText(error); element('layer-rename-error').hidden = false; }
   });
 
@@ -1004,7 +1075,7 @@ export function createEditor(env: EditorEnv): Editor {
     }
     inputErrors.delete(input.id);
     clearFieldError(keysPanel, input.id);
-    changed(next);
+    changed(next, { group: `${activeLayer}:label:${slot.id}` });
   }
 
   function moveKey(from: number, to: number): void {
@@ -1017,20 +1088,12 @@ export function createEditor(env: EditorEnv): Editor {
   function removeKey(id: string): void {
     const index = config.slots.findIndex(s => s.id === id);
     if (index < 0 || !session) return;
-    const slot = config.slots[index], owner = session, ownerLayer = activeLayer;
+    const slot = config.slots[index];
     const neighbour = config.slots[index + 1]?.id ?? config.slots[index - 1]?.id;
     changed({ ...config, slots: config.slots.filter(s => s.id !== id) }, { render: 'keys' });
     const target = neighbour ? keysPanel.querySelector<HTMLElement>(`[data-remove="${neighbour}"]`) : keysPanel.querySelector<HTMLElement>('[data-action="add"]');
     target?.focus();
-    toast(removedMessage(slot), { action: { label: 'Undo', run: () => undoRemove(owner, slot, index, ownerLayer) } });
-  }
-
-  function undoRemove(owner: ProjectSession, slot: HolderConfig['slots'][number], index: number, ownerLayer: number): void {
-    if (session !== owner || activeLayer !== ownerLayer) return;
-    changed(reinsertSlot(config, slot, index), { render: 'keys' });
-    if (keyDialog.open) { renderCatalog(); catalogTotal.textContent = catalogTotalText(config.slots.length); return; }
-    const restored = keysPanel.querySelector<HTMLElement>(`[data-remove="${slot.id}"]`);
-    if (isShown(restored)) restored.focus();
+    offerUndo(removedMessage(slot));
   }
 
   keysPanel.addEventListener('click', event => {
@@ -1187,13 +1250,10 @@ export function createEditor(env: EditorEnv): Editor {
     if (!session) return;
     const result = removeOneOfType(config, type);
     if (!result) return;
-    const owner = session, ownerLayer = activeLayer;
     changed(result.config, { render: 'keys' });
     catalogTotal.textContent = catalogTotalText(config.slots.length, { verb: 'Removed', type });
     refreshCatalog(`[data-remove-type="${type}"]`, `[data-add-type="${type}"]`);
-    if (result.custom) {
-      toast(removedMessage(result.slot), { action: { label: 'Undo', run: () => undoRemove(owner, result.slot, result.index, ownerLayer) } });
-    }
+    if (result.custom) offerUndo(removedMessage(result.slot));
   }
 
   keySearch.addEventListener('input', renderCatalog);
@@ -1682,31 +1742,32 @@ export function createEditor(env: EditorEnv): Editor {
     }
     if (target.dataset.remove) { removeKey(target.dataset.remove); return; }
     switch (target.dataset.action) {
+      case 'undo': travelHistory('undo'); break;
+      case 'redo': travelHistory('redo'); break;
       case 'home': env.actions.goHome(); break;
       case 'rename': startRename(); break;
       case 'download': onDownloadButton(); break;
       case 'backup': exportFile(); break;
       case 'add': openKeyDialog(); break;
       case 'arrange-compactly': {
-          const before = structuredClone(config), owner = session, index = activeLayer;
           const next = compactTray(config);
           if (next === config) { toast('Keys already use the most compact layout found. Choose Columns in Tray settings to return to a grid.'); return; }
           changed(next, { render: 'keys' });
-          const after = JSON.stringify(config);
-          toast('Keys rotated and arranged compactly. Choose Columns in Tray settings to return to a grid.', { action: { label: 'Undo', run: () => {
-            if (session === owner && activeLayer === index && JSON.stringify(config) === after) changed(before, { render: 'keys' });
-          } } });
+          offerUndo('Keys rotated and arranged compactly. Choose Columns in Tray settings to return to a grid.');
         break;
       }
       case 'show-error': focusFirstError(); break;
       case 'lock-footprint': setFootprint('lock'); break;
       case 'grow-footprint': setFootprint('grow'); break;
-      case 'cancel-resize':
+      case 'cancel-resize': {
+        const before = captureEdit();
         pendingResize = undefined; match = undefined;
         config = projectLayers(session!.config)[activeLayer].config;
         inputErrors.clear(); clearPendingErrors();
+        recordEdit(before);
         update('all'); refreshCatalog(); invalidate();
         break;
+      }
       case 'new-layer': newLayer(); break;
       case 'new-lid': newLid(); break;
       case 'all-layers':
@@ -1751,6 +1812,7 @@ export function createEditor(env: EditorEnv): Editor {
     close();
     openToken++;
     session = new ProjectSession(env.store.local, start, events, { session: env.store.session });
+    clearHistory();
     activeLayer = Math.min(options.ui?.layer ?? 0, projectLayers(session.config).length - 1);
     allLayers = options.ui?.allLayers ?? session.config.template === 'inventory_tray';
     config = projectLayers(session.config)[activeLayer].config;
@@ -1795,6 +1857,7 @@ export function createEditor(env: EditorEnv): Editor {
     // Detach first: close() runs while the URL already shows the next route (Back/Forward, another
     // project), so onSaved from the rename or the final flush must not sync the URL to this project.
     session = undefined;
+    clearHistory();
     pendingResize = undefined;
     downloadController?.abort(); downloadTicket++;
     controller?.abort();
@@ -1821,6 +1884,8 @@ export function createEditor(env: EditorEnv): Editor {
     close,
     openKeyDialog,
     selectLayer,
+    undo: () => travelHistory('undo'),
+    redo: () => travelHistory('redo'),
     focusHeading: () => titleEl.focus(),
     // pagehide, hidden and app updates: an open rename is committed too (unload fires no blur).
     flush: () => { if (renaming) finishRename(true, false); return session?.flush() ?? true; },
