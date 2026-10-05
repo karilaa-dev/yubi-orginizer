@@ -5,10 +5,14 @@
  * Every edit goes through changed(): validate, hand the config to the session (autosave), render
  * what the change requires, sync derived state in place, then regenerate the model.
  */
-import { MAX_SLOTS, TEMPLATES, createSlot, defaultConfig, moveSlot, validateConfig } from '../config';
+import { MAX_LAYERS, MAX_SLOTS, TEMPLATES, createSlot, defaultConfig, moveSlot, validateConfig } from '../config';
 import { DOWNLOAD_READY_EVENT, downloadFile, downloadParts, downloadProject, partFileName, trayConnectionInstructions, type DownloadReadyDetail } from '../export';
 import { estimateFilament } from '../filament';
-import { buildProject, inventoryTrayLayout, trayFootprintError } from '../geometry';
+import { buildTraySet, traySetItems, selectTrayParts, traySetLayout } from '../geometry/layers';
+import { appendLayer, moveLayer, projectKeyCount, projectLayers, removeLayer, replaceLayer, withLayers } from '../layers';
+import { downloadLayersMarkup } from './editor-download';
+import { layersPanelMarkup } from './editor-layers';
+import { compactTray } from '../geometry';
 import { icon } from '../icons';
 import { OrganizerPreview } from '../preview';
 import { ProjectSession, ProjectStoreError, listProjects, type BrowserStorage, type DisplayPrefs, type ProjectRecord, type ProjectSessionEvents } from '../projects';
@@ -19,17 +23,17 @@ import { build3mf } from '../three-mf';
 import type { HolderConfig, KeyType, ProjectGeometry, TemplateId } from '../types';
 import { openDialog } from './app-dialogs';
 import { filamentDetailMarkup } from './app-help';
-import { esc } from './dom';
+import { esc, plural } from './dom';
 import { captureFocus, clearFieldError, controlInputs, fieldErrorText, restoreFocus, showFieldError } from './editor-fields';
 import { catalogMarkup, catalogTotalText, dropIndex, isKeysControl, keysPanelMarkup, reinsertSlot, removeOneOfType, removedMessage } from './editor-keys';
-import { settingsPanelMarkup, sizePanelMarkup, snapFitRangeError, syncSettingsPanel, withConnection, withTemplate, type SyncMemory } from './editor-settings';
+import { ORGANIZER_TYPE_LOCK_HINT, settingsPanelMarkup, sizePanelMarkup, trayGroups, snapFitRangeError, syncSettingsPanel, withConnection, withTemplate, type SyncMemory } from './editor-settings';
 import {
   FAILED_TEXT, OFFLINE_SETUP_TEXT, STALE_STATES, createErrorAnnouncer, downloadButtonState, downloadDialogStatus, fileSizeText, formatNote,
-  generationLabel, gramsText, isOfflineSetupFailure, isZipDownload, mobileStatusText, partSelectValue, preparingLabel, previewOverlay,
-  primaryDownloadLabel, printTip, type DownloadFormat, type EditorStatus, type PreviewState,
+  generationLabel, gramsText, isOfflineSetupFailure, isZipDownload, mobileStatusText, preparingLabel, previewOverlay,
+  primaryDownloadLabel, type DownloadFormat, type EditorStatus, type PreviewState,
 } from './editor-status';
 import { closeMenu, isMenuOpen, openMenu, type MenuItem } from './menu';
-import { deleteWithUndo, duplicateFromEditor, matchingLayerAvailability, openMatchingLayerDialog, requestPersistentStorage, type ProjectActionsDeps } from './project-actions';
+import { deleteWithUndo, duplicateFromEditor, matchingLayerAvailability, requestPersistentStorage, type ProjectActionsDeps } from './project-actions';
 import {
   DEFAULT_OPEN_GROUPS, groupOfControl, panelOfControl, traySettingsState, type FootprintMatch, type MatchState, type Panel,
 } from './settings-model';
@@ -38,7 +42,7 @@ import { toast } from './toast';
 export type { Panel } from './settings-model';
 export type RenderScope = 'none' | 'keys' | 'settings' | 'all';
 /** Restored after an update reload (sessionStorage yubi-orginizer.ui.v1). */
-export interface UiState { panel: Panel; panelScroll: number; windowScroll: number }
+export interface UiState { panel: Panel; panelScroll: number; windowScroll: number; layer?: number; allLayers?: boolean; lid?: boolean }
 
 export interface EditorEnv {
   store: BrowserStorage;
@@ -60,6 +64,7 @@ export interface Editor {
   open(start: ProjectRecord | { config: HolderConfig }, options?: { ui?: UiState }): void;
   close(): void;
   openKeyDialog(): void;
+  selectLayer(index: number): void;
   focusHeading(): void;
   /** Writes pending edits now. False if the latest edit could not be saved. */
   flush(): boolean;
@@ -97,17 +102,23 @@ export function editorMarkup(): string {
     </div>
     <p id="rename-error" class="field-error rename-error" role="alert" hidden></p>
     <div id="remote-banner" class="callout warn remote-banner" hidden></div>
+    <p id="layer-context" class="layer-context"></p>
     <div class="workspace">
       <aside class="controls-panel" aria-label="Organizer design">
         <div class="panel-tabs" role="tablist" aria-label="Organizer design">
           <button type="button" id="keys-tab" role="tab" aria-selected="true" aria-controls="keys-panel">${icon('key', 'tab-icon')}<span class="tab-label">Keys</span><span id="key-count" class="tab-count">0</span></button>
-          <button type="button" id="size-tab" role="tab" aria-selected="false" aria-controls="size-panel" tabindex="-1">${icon('ruler', 'tab-icon')}<span class="tab-label">Size</span></button>
           <button type="button" id="settings-tab" role="tab" aria-selected="false" aria-controls="settings-panel" tabindex="-1">${icon('sliders', 'tab-icon')}<span class="tab-label">Tray settings</span></button>
+          <button type="button" id="size-tab" role="tab" aria-selected="false" aria-controls="size-panel" tabindex="-1">${icon('ruler', 'tab-icon')}<span class="tab-label">Size</span></button>
+          <button type="button" id="layers-tab" role="tab" aria-selected="false" aria-controls="layers-panel" tabindex="-1">${icon('layers', 'tab-icon')}<span class="tab-label">Layers</span></button>
         </div>
         <div class="panel-body">
           <div id="keys-panel" class="tab-panel" role="tabpanel" aria-labelledby="keys-tab"></div>
           <div id="size-panel" class="tab-panel" role="tabpanel" aria-labelledby="size-tab" hidden></div>
           <div id="settings-panel" class="tab-panel" role="tabpanel" aria-labelledby="settings-tab" hidden></div>
+          <div id="layers-panel" class="tab-panel" role="tabpanel" aria-labelledby="layers-tab" hidden>
+            <section id="layer-manager" class="layer-manager" aria-label="Project layers"></section><div id="layer-settings" class="groups"></div>
+            <p id="layers-overview-hint" class="layer-overview-hint" hidden>Select a layer to focus the camera and edit it. Other layers stay visible at 25% opacity.</p>
+          </div>
         </div>
       </aside>
       <section id="preview-card" class="preview-card" data-state="empty" aria-label="3D preview">
@@ -138,6 +149,14 @@ export function editorMarkup(): string {
       <span id="mobile-status" class="mobile-status"></span>
       <button type="button" id="download-mobile" class="button primary download-button" data-action="download">${icon('download')}<span class="download-label">Download</span></button>
     </div>
+    <dialog id="layer-rename-dialog" class="dialog small-dialog" aria-labelledby="layer-rename-title">
+      <form id="layer-rename-form" class="project-dialog-body">
+        <h2 id="layer-rename-title">Rename layer</h2>
+        <label class="field" for="layer-name-input">Name<input id="layer-name-input" type="text" maxlength="80" required autocomplete="off"/></label>
+        <p id="layer-rename-error" class="field-error" role="alert" hidden></p>
+        <div class="dialog-footer"><button type="button" class="button secondary" data-action="close-dialog">Cancel</button><button type="submit" class="button primary">Save name</button></div>
+      </form>
+    </dialog>
     <p id="model-announcer" class="sr-only" role="status" aria-live="polite"></p>
     <p id="reorder-announcer" class="sr-only" role="status" aria-live="polite"></p>
   </section>`;
@@ -173,8 +192,9 @@ export function createEditor(env: EditorEnv): Editor {
   const keysTab = element<HTMLButtonElement>('keys-tab'), sizeTab = element<HTMLButtonElement>('size-tab'), settingsTab = element<HTMLButtonElement>('settings-tab');
   const PANELS: readonly { id: Panel; tab: HTMLButtonElement; body: HTMLElement }[] = [
     { id: 'keys', tab: keysTab, body: keysPanel },
-    { id: 'size', tab: sizeTab, body: sizePanel },
     { id: 'settings', tab: settingsTab, body: settingsPanel },
+    { id: 'size', tab: sizeTab, body: sizePanel },
+    { id: 'layers', tab: element<HTMLButtonElement>('layers-tab'), body: element('layers-panel') },
   ];
   const tabOf = (id: Panel): HTMLButtonElement => PANELS.find(p => p.id === id)!.tab;
   const keyCount = element('key-count');
@@ -191,12 +211,11 @@ export function createEditor(env: EditorEnv): Editor {
   const modelAnnouncer = element('model-announcer'), reorderAnnouncer = element('reorder-announcer');
   const keyDialog = element<HTMLDialogElement>('key-dialog'), keySearch = element<HTMLInputElement>('key-search');
   const catalog = element('key-catalog'), catalogTotal = element('catalog-total');
-  const downloadDialog = element<HTMLDialogElement>('download-dialog'), partField = element('download-part-field');
-  const partSelect = element<HTMLSelectElement>('download-part'), formatNoteEl = element('format-note');
+  const downloadDialog = element<HTMLDialogElement>('download-dialog');
+  const formatNoteEl = element('format-note');
   const downloadFileButton = element<HTMLButtonElement>('download-file'), downloadFileLabel = element('download-file-label');
-  const downloadResult = element('download-result'), trayTip = element('tray-print-tip'), dockTip = element('dock-print-tip');
+  const downloadResult = element('download-result'), dockTip = element('dock-print-tip');
   const downloadStateEl = element('download-state'), downloadAnnouncer = element('download-announcer');
-  const assemblyNotes = element<HTMLDetailsElement>('assembly-notes'), lockTip = element('tray-lock-tip');
   const filamentDialog = element<HTMLDialogElement>('filament-dialog'), filamentDetail = element('filament-detail');
 
   const compactQuery = window.matchMedia('(max-width: 760px)');
@@ -214,25 +233,39 @@ export function createEditor(env: EditorEnv): Editor {
   /* ───────────── State ───────────── */
 
   let session: ProjectSession | undefined;
+  let pendingResize: HolderConfig | undefined;
+  const workingProject = (): HolderConfig => pendingResize ?? session!.config;
+  const sizeState = () => traySettingsState(config, new Set(inputErrors.keys()), match, workingProject()).size;
   let config: HolderConfig = { ...defaultConfig(), slots: [] };
   let panel: Panel = 'keys';
-  const panelScroll: Record<Panel, number> = { keys: 0, size: 0, settings: 0 };
+  let activeLayer = 0, allLayers = false, activeLid = false;
+  let renamingLayer = 0;
+  const panelScroll: Record<Panel, number> = { keys: 0, size: 0, settings: 0, layers: 0 };
   /** Size › Footprint › Match project: not part of the config, so it lasts while the project is open. */
   let match: MatchState;
   let exploded = true;
   let openToken = 0, displayedToken = -1;
-  let revision = 0, readyRevision = -1;
+  let revision = 0;
   let controller: AbortController | undefined;
   let debounce: ReturnType<typeof setTimeout> | undefined;
   let chipTimer: ReturnType<typeof setTimeout> | undefined;
-  let currentProject: ProjectGeometry | undefined;
-  let meshes = new Map<string, ArrayBuffer>();
   let previewState: PreviewState = 'empty';
   let failureMessage = '';
   let progress = { index: 0, total: 0, label: '' };
   let estimate = '';
   let mobileHtml = '';
   let downloadStateHtml = '';
+  let downloadConfig: HolderConfig | undefined;
+  let downloadSource: ProjectGeometry | undefined;
+  let downloadGeometry: ProjectGeometry | undefined;
+  let downloadMeshes = new Map<string, ArrayBuffer>();
+  let downloadSelection = new Set<string>();
+  let downloadController: AbortController | undefined;
+  let downloadTicket = 0;
+  let downloadStatus: PreviewState = 'empty';
+  let downloadError = '';
+  let downloadProgress = { index: 0, total: 0 };
+
   let saveError: Error | undefined;
   let renaming = false;
   let renderedName: string | undefined;
@@ -247,10 +280,10 @@ export function createEditor(env: EditorEnv): Editor {
   const lidMetricCache = new Map<string, NonNullable<ReturnType<typeof readLegacyLidSize>>>();
   const openGroups = new Map<TemplateId, Set<string>>();
 
-  const tooSmall = (): boolean => config.slots.length > 0 && trayFootprintError(config) !== undefined;
+  const tooSmall = (): boolean => !!session && config.template === 'inventory_tray' && traySetLayout(workingProject()).tooSmall;
   const errorCount = (): number => inputErrors.size + (tooSmall() ? 1 : 0);
   const status = (): EditorStatus => ({
-    keys: config.slots.length, errors: errorCount(), state: previewState,
+    keys: session && config.template === 'inventory_tray' ? projectKeyCount(workingProject()) || (workingProject().options.tray.footprint ? 1 : 0) : config.slots.length, errors: errorCount(), state: previewState,
     unsaved: !!session && (!!saveError || !!session.blocked),
   });
 
@@ -290,7 +323,10 @@ export function createEditor(env: EditorEnv): Editor {
       if (!session) return;
       if (!session.blocked) hideRemoteBanner();
       if (change.configChanged) {
-        config = session.config;
+        pendingResize = undefined;
+        activeLayer = Math.min(activeLayer, projectLayers(session.config).length - 1);
+        config = projectLayers(session.config)[activeLayer].config;
+        activeLid &&= config.options.tray.lid;
         inputErrors.clear();
         clearPendingErrors();
         memory.errorGroups.clear();
@@ -311,10 +347,18 @@ export function createEditor(env: EditorEnv): Editor {
     const s = session;
     if (!s) return;
     const touch = options.touch ?? true;
-    config = validateConfig(next);
-    s.edit(config, { touch });
+    const project = replaceLayer(workingProject(), activeLayer, validateConfig(next));
+    config = projectLayers(project)[activeLayer].config;
+    if (project.template === 'inventory_tray' && traySetLayout(project).tooSmall) {
+      pendingResize = project;
+    } else {
+      pendingResize = undefined;
+      s.edit(project, { touch });
+    }
+    allLayers = false;
+    syncPreviewFocus();
     // A new project is created on its first real edit; onSaved then switches the URL to #/p/<id>.
-    if (!s.persisted && touch) s.flush();
+    if (!s.persisted && touch && !pendingResize) s.flush();
     update(options.render ?? 'none');
     invalidate();
   }
@@ -324,9 +368,10 @@ export function createEditor(env: EditorEnv): Editor {
     if (render === 'keys' || render === 'all') renderKeys();
     if (render === 'settings' || render === 'all') renderSettings();
     if (render === 'all') { renderTitle(); renderDownloadTips(); }
+    renderLayers();
     syncSettingsState();
     renderTabs();
-    renderDownloadState();
+    renderSaveState();
     if (focus) restoreFocus(root, focus);
   }
 
@@ -334,7 +379,8 @@ export function createEditor(env: EditorEnv): Editor {
     for (const id of [...inputErrors.keys()]) if (isKeysControl(id)) inputErrors.delete(id);
     for (const id of [...pendingErrors.keys()]) if (isKeysControl(id)) pendingErrors.delete(id);
     if (!pendingErrors.size) clearTimeout(pendingTimer);
-    keysPanel.innerHTML = keysPanelMarkup(config, { draggable: fineQuery.matches, dockNotice: !env.prefs().seen.dockNotice });
+    keysPanel.innerHTML = activeLid ? '<div class="panel-section"><p class="field-hint">Lids have no key pockets. Select a tray in Layers to edit its keys.</p></div>'
+      : keysPanelMarkup(config, { draggable: fineQuery.matches, dockNotice: !env.prefs().seen.dockNotice });
   }
 
   function renderSettings(): void {
@@ -357,11 +403,14 @@ export function createEditor(env: EditorEnv): Editor {
     // Re-rendering the same organizer type keeps the groups the user has open right now
     // (including ones opened for an error); a new project or type uses the saved state.
     const current = sameType
-      ? new Set([...settingsPanel.querySelectorAll<HTMLElement>('details.group[open]')].map(d => d.dataset.group!))
+      ? new Set([...panelBody.querySelectorAll<HTMLElement>('details.group[open]')].map(d => d.dataset.group!))
       : undefined;
     const scroll = panelBody.scrollTop;
-    settingsPanel.innerHTML = settingsPanelMarkup(config, { open: current ?? openGroupsFor(config.template) });
+    settingsPanel.innerHTML = settingsPanelMarkup(config, { open: current ?? openGroupsFor(config.template), lid: activeLid });
+    element('layer-settings').innerHTML = config.template === 'inventory_tray' ? trayGroups(config, current ?? openGroupsFor(config.template), 'layers') : '';
     sizePanel.innerHTML = sizePanelMarkup(config, { match, candidates: matchCandidates() });
+    const spacing = sizePanel.querySelector<HTMLElement>('[data-section=spacing]');
+    if (spacing) spacing.hidden = activeLid;
     settingsPanel.dataset.template = config.template;
     if (current) panelBody.scrollTop = scroll;
     const restored: HTMLInputElement[] = [];
@@ -380,18 +429,16 @@ export function createEditor(env: EditorEnv): Editor {
 
   /** Replaces updateTrayLockReadouts() / updateTraySizeReadout(): everything derived from the config. */
   function syncSettingsState(): void {
-    // The Size and settings tabs, and Columns in the Keys tab.
-    syncSettingsPanel(panelBody, config, inputErrors, memory, match);
+    // Size, tray/lid settings, and the shared connection controls in Layers.
+    syncSettingsPanel(panelBody, config, inputErrors, memory, match, session ? workingProject() : config);
     const instructions = session ? trayConnectionInstructions(config).join(' ') : '';
     const helpText = document.getElementById('tray-lock-help-text');
     if (helpText) { helpText.textContent = instructions; helpText.hidden = !instructions; }
-    lockTip.textContent = instructions;
-    assemblyNotes.hidden = !instructions;
   }
 
   function renderTabs(): void {
-    keyCount.textContent = String(config.slots.length);
-    settingsTab.querySelector('.tab-label')!.textContent = config.template === 'desktop_dock' ? 'Dock settings' : 'Tray settings';
+    keyCount.textContent = String(activeLid ? 0 : config.slots.length);
+    settingsTab.querySelector('.tab-label')!.textContent = config.template === 'desktop_dock' ? 'Dock settings' : activeLid ? 'Lid settings' : 'Tray settings';
     for (const { id, tab, body } of PANELS) {
       const active = panel === id;
       tab.setAttribute('aria-selected', String(active));
@@ -432,11 +479,12 @@ export function createEditor(env: EditorEnv): Editor {
   tabs.addEventListener('keydown', event => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
     event.preventDefault();
-    const index = PANELS.findIndex(p => p.id === panel), last = PANELS.length - 1;
+    const visiblePanels = PANELS.filter(p => !p.tab.hidden);
+    const index = visiblePanels.findIndex(p => p.id === panel), last = visiblePanels.length - 1;
     const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? last
       : event.key === 'ArrowRight' ? (index === last ? 0 : index + 1) : (index === 0 ? last : index - 1);
-    switchPanel(PANELS[nextIndex].id);
-    PANELS[nextIndex].tab.focus();
+    switchPanel(visiblePanels[nextIndex].id);
+    visiblePanels[nextIndex].tab.focus();
   });
 
   /* ───────────── Title, save state, rename, remote banner ───────────── */
@@ -459,6 +507,9 @@ export function createEditor(env: EditorEnv): Editor {
     } else if (s && (saveError || s.blocked)) {
       tone = 'error';
       html = `${icon('alert')}<span class="save-text">Not saved</span><button type="button" class="text-button" data-action="backup">Save project file</button>`;
+    } else if (pendingResize) {
+      tone = 'warn';
+      html = `${icon('info')}<span class="save-text">Size change pending</span>`;
     } else if (s?.persisted) {
       tone = 'ok';
       html = `${icon('check')}<span class="save-text">Saved</span>`;
@@ -565,7 +616,7 @@ export function createEditor(env: EditorEnv): Editor {
         return;
       }
       match = undefined;
-      const t = inventoryTrayLayout(config);
+      const t = traySetLayout(workingProject());
       next.options.tray.footprint = choice === 'fixed' ? (config.options.tray.footprint ?? { width: t.width || 80, depth: t.depth || 80 }) : null;
     } else if (field === 'tray.width' || field === 'tray.depth') {
       if (!next.options.tray.footprint) return;
@@ -576,6 +627,8 @@ export function createEditor(env: EditorEnv): Editor {
       const value = input.type === 'checkbox' ? input.checked : numeric ? numberOf(input.value) : input.value;
       (next.options[section] as unknown as Record<string, unknown>)[name] = value;
     }
+    if (field === 'labels' && !next.labels) { inputErrors.delete('labelSize'); pendingErrors.delete('labelSize'); }
+    if (field === 'tray.columns') delete next.options.tray.arrangement;
     try {
       if (field === 'labelSize' && (!Number.isFinite(next.labelSize) || next.labelSize < 1.5 || next.labelSize > 4)) throw new Error('Label size must be between 37.5% and 100%.');
       const snapError = snapFitRangeError(next, field);
@@ -604,10 +657,10 @@ export function createEditor(env: EditorEnv): Editor {
     if (!pendingErrors.size) clearTimeout(pendingTimer);
     inputErrors.delete(field);
     clearFieldError(root, field);
-    const previous = config, owner = session;
+    const previous = config, owner = session, ownerLayer = activeLayer;
     const replacedSnap = field === 'tray.connection' && previous.options.tray.connection === 'snap_fit' && next.options.tray.connection !== 'snap_fit';
     if (field === 'tray.lid' && next.options.tray.lid && !previous.options.tray.lid) setExploded(true);
-    changed(next, { render: replacedSnap ? 'settings' : field === 'labels' ? 'keys' : 'none' });
+    changed(next, { render: replacedSnap ? 'settings' : field === 'labels' ? 'settings' : 'none' });
     // Keep the other input of the same option (number ↔ range) in step.
     for (const other of root.querySelectorAll<HTMLInputElement>(`[data-option="${field}"]`)) {
       if (other === input || other.type === 'radio' || other.type === 'checkbox') continue;
@@ -619,7 +672,7 @@ export function createEditor(env: EditorEnv): Editor {
           label: 'Undo',
           run: () => {
             // Only the connection goes back: keys and settings edited since the replacement stay.
-            if (session !== owner || config.options.tray.connection === 'snap_fit') return;
+            if (session !== owner || activeLayer !== ownerLayer || config.options.tray.connection === 'snap_fit') return;
             changed(withConnection(config, 'snap_fit'), { render: 'settings' });
             focusAfterUndo('[data-option="tray.connection"]:checked');
           },
@@ -648,6 +701,7 @@ export function createEditor(env: EditorEnv): Editor {
 
   function switchTemplate(template: TemplateId): void {
     if (!session || template === config.template) return;
+    if (projectLayers(session.config).length > 1) { toast(ORGANIZER_TYPE_LOCK_HINT); update('keys'); return; }
     const previousTemplate = config.template, owner = session;
     setExploded(true);
     changed(withTemplate(config, template), { render: 'all' });
@@ -679,10 +733,10 @@ export function createEditor(env: EditorEnv): Editor {
   function setFootprint(kind: 'lock' | 'grow' | 'auto'): void {
     if (!session || config.template !== 'inventory_tray') return;
     const next = structuredClone(config);
-    const layout = inventoryTrayLayout(config);
+    const layout = traySetLayout(workingProject());
     if (kind === 'lock') next.options.tray.footprint = { width: layout.width, depth: layout.depth };
     else if (kind === 'grow') {
-      const grow = traySettingsState(config).size.grow;
+      const grow = sizeState().grow;
       if (!grow) return;
       next.options.tray.footprint = { width: grow.width, depth: grow.depth };
     } else next.options.tray.footprint = null;
@@ -699,13 +753,154 @@ export function createEditor(env: EditorEnv): Editor {
     else if (fromOverlay) card.querySelector<HTMLElement>('.preview-canvas')?.focus();
   }
 
-  function newLayer(): void {
-    if (!session) return;
-    if (!session.persisted) {
-      try { session.saveAsNew(); } catch (error) { toast(errorText(error)); return; }
+  function renderLayers(): void {
+    const manager = element('layer-manager');
+    const tray = config.template === 'inventory_tray';
+    manager.hidden = !tray;
+    element('layers-tab').hidden = !tray;
+    if (!tray && panel === 'layers') { panel = 'keys'; renderTabs(); }
+    if (!tray) allLayers = false;
+    if (session && tray) manager.innerHTML = layersPanelMarkup(workingProject(), activeLayer, allLayers, activeLid, fineQuery.matches);
+    const many = !!session && projectLayers(session.config).length > 1;
+    element('layer-context').textContent = tray && session
+      ? allLayers ? `All layers · ${plural(projectLayers(session.config).length, 'tray')}${projectLayers(session.config).some(l => l.config.options.tray.lid) ? ' + lid' : ''}` : activeLid ? `${traySetItems(session.config).find(i => i.layerIndex === activeLayer && i.kind === 'lid')?.name ?? 'Lid'} · Editing lid` : `${projectLayers(session.config)[activeLayer].name} · Editing tray`
+      : '';
+    element('layer-context').hidden = !tray;
+    element('layers-overview-hint').hidden = !allLayers;
+    showKeysButton.hidden = false;
+
+    for (const input of keysPanel.querySelectorAll<HTMLInputElement>('[data-template-switch]')) {
+      input.setAttribute('aria-disabled', String(many));
+      const label = input.closest('label')!;
+      label.title = many ? ORGANIZER_TYPE_LOCK_HINT : '';
     }
-    openMatchingLayerDialog(session.id!, env.actions);
+
   }
+
+  function canLeaveLayer(): boolean {
+    if (pendingResize) { toast('Accept the proposed size or cancel the change before switching layers.'); return false; }
+    surfacePendingErrors();
+    if (inputErrors.size) { toast('Fix the highlighted settings before switching layers.'); focusFirstError(); return false; }
+    return true;
+  }
+
+  function selectLayer(index: number, lid = false): void {
+    if (!session || !canLeaveLayer()) return;
+    const layer = projectLayers(session.config)[index];
+    if (!layer) return;
+    activeLayer = index;
+    activeLid = lid && layer.config.options.tray.lid;
+    allLayers = false;
+    config = layer.config;
+    match = undefined;
+    dragging = undefined;
+    memory.errorGroups.clear();
+    clearPendingErrors();
+    update('all');
+    setExploded(true);
+    syncPreviewFocus();
+    // Selecting a layer changes only the camera and opacity, not the printable meshes.
+    if (previewState !== 'ready' || (activeLid && config.options.tray.lidTextPercent === undefined)) invalidate();
+  }
+
+  function editLayers(next: HolderConfig, index: number, lid = false): void {
+    if (!session) return;
+    session.edit(next);
+    if (!session.persisted) session.flush();
+    selectLayer(index, lid);
+    invalidate();
+  }
+
+  function newLayer(duplicate = false): void {
+    if (!session || !canLeaveLayer()) return;
+    const layout = traySetLayout(workingProject());
+    try {
+      const next = appendLayer(session.config, activeLayer, {
+        footprint: { width: layout.width || 80, depth: layout.depth || 80 }, duplicate,
+      });
+      editLayers(next, projectLayers(next).length - 1);
+      if (!duplicate) openKeyDialog();
+    } catch (error) { toast(errorText(error)); }
+  }
+
+  function newLid(): void {
+    if (!session || !canLeaveLayer()) return;
+    const index = projectLayers(session.config).length - 1;
+    const next = structuredClone(projectLayers(session.config)[index].config);
+    next.options.tray.lid = true;
+    const size = traySetLayout(session.config);
+    if (!size.width || !size.depth) next.options.tray.footprint = { width: 80, depth: 80 };
+    editLayers(replaceLayer(session.config, index, next), index, true);
+  }
+
+  function lidMenu(button: HTMLElement, index: number): void {
+    openMenu(button, [{ label: 'Remove lid', icon: 'trash', danger: true, run: () => {
+      if (!session || !canLeaveLayer()) return;
+      const owner = session, before = structuredClone(session.config);
+      const next = structuredClone(projectLayers(before)[index].config);
+      next.options.tray.lid = false;
+      editLayers(replaceLayer(before, index, next), index);
+      const after = JSON.stringify(session.config);
+      toast('Removed lid.', { action: { label: 'Undo', run: () => {
+        if (session === owner && JSON.stringify(session.config) === after) editLayers(before, index, true);
+      } } });
+    } }], 'Lid actions');
+  }
+
+  function reorderLayer(from: number, to: number): void {
+    if (!session || !canLeaveLayer()) return;
+    const next = moveLayer(session.config, from, to);
+    if (next === session.config) return;
+    const count = projectLayers(next).length;
+    activeLayer = activeLid ? count - 1 : activeLayer === from ? to
+      : from < activeLayer && to >= activeLayer ? activeLayer - 1
+      : from > activeLayer && to <= activeLayer ? activeLayer + 1 : activeLayer;
+    session.edit(next);
+    config = projectLayers(next)[activeLayer].config;
+    update('all');
+    invalidate();
+    announce(reorderAnnouncer, `Moved tray to position ${count - to} of ${count}, from the top. The lid stays on top.`);
+    element('layer-manager').querySelector<HTMLElement>(`[data-reorder-layer="${to}"]`)?.focus({ preventScroll: true });
+  }
+
+  function layerMenu(button: HTMLElement, index: number): void {
+    if (!session) return;
+    const layers = projectLayers(session.config);
+    openMenu(button, [
+      { label: 'Rename layer', icon: 'edit', run: () => {
+        renamingLayer = index;
+        element<HTMLInputElement>('layer-name-input').value = layers[index].name;
+        element('layer-rename-error').hidden = true;
+        openDialog(element<HTMLDialogElement>('layer-rename-dialog'));
+        element<HTMLInputElement>('layer-name-input').select();
+      } },
+      { label: 'Duplicate layer', icon: 'copy', disabled: layers.length >= MAX_LAYERS, run: () => { selectLayer(index); if (activeLayer === index) newLayer(true); } },
+      { label: 'Move toward bottom', icon: 'down', disabled: index === 0, run: () => reorderLayer(index, index - 1) },
+      { label: 'Move toward top', icon: 'up', disabled: index === layers.length - 1, run: () => reorderLayer(index, index + 1) },
+      { label: 'Remove layer', icon: 'trash', danger: true, disabled: layers.length === 1, run: () => {
+        if (!session || !canLeaveLayer()) return;
+        const owner = session, before = structuredClone(session.config);
+        const removed = projectLayers(before)[index];
+        const next = removeLayer(before, index);
+        editLayers(next, Math.min(index, projectLayers(next).length - 1));
+        const after = JSON.stringify(session.config);
+        toast(`Removed “${removed.name}”.`, { action: { label: 'Undo', run: () => {
+          if (session !== owner || JSON.stringify(session.config) !== after) { toast('The tray set changed, so Undo was skipped.'); return; }
+          editLayers(before, index);
+        } } });
+      } },
+    ], 'Layer actions');
+  }
+
+  element('layer-rename-form').addEventListener('submit', event => {
+    event.preventDefault();
+    if (!session) return;
+    const layers = projectLayers(session.config);
+    if (!layers[renamingLayer]) return;
+    layers[renamingLayer] = { ...layers[renamingLayer], name: element<HTMLInputElement>('layer-name-input').value };
+    try { session.edit(withLayers(layers)); renderLayers(); invalidate(); element<HTMLDialogElement>('layer-rename-dialog').close(); }
+    catch (error) { element('layer-rename-error').textContent = errorText(error); element('layer-rename-error').hidden = false; }
+  });
 
   /** Other saved trays on this device, with the width and depth Match project copies. */
   function matchCandidates(): FootprintMatch[] {
@@ -714,7 +909,7 @@ export function createEditor(env: EditorEnv): Editor {
     let projects;
     try { projects = listProjects(env.store.local).projects; } catch { return []; }
     return projects.filter(p => p.id !== own && p.config.template === 'inventory_tray').flatMap(p => {
-      const layout = inventoryTrayLayout(p.config);
+      const layout = traySetLayout(p.config);
       return layout.width > 0 && layout.depth > 0 ? [{ id: p.id, name: p.name, width: layout.width, depth: layout.depth }] : [];
     });
   }
@@ -761,7 +956,7 @@ export function createEditor(env: EditorEnv): Editor {
     el?.focus();
   }
 
-  for (const settingsBody of [sizePanel, settingsPanel]) {
+  for (const settingsBody of [sizePanel, settingsPanel, element('layer-settings')]) {
     settingsBody.addEventListener('input', onSettingsInput);
     settingsBody.addEventListener('change', onSettingsChange);
   }
@@ -777,7 +972,7 @@ export function createEditor(env: EditorEnv): Editor {
     if (input.dataset.option && !['range', 'text'].includes(input.type)) updateOption(input);
   }
   // Open groups are remembered per organizer type, only when the user toggles them.
-  settingsPanel.addEventListener('click', event => {
+  panelBody.addEventListener('click', event => {
     const summary = (event.target as Element).closest('summary');
     const details = summary?.parentElement;
     if (!(details instanceof HTMLDetailsElement) || !details.dataset.group) return;
@@ -822,21 +1017,36 @@ export function createEditor(env: EditorEnv): Editor {
   function removeKey(id: string): void {
     const index = config.slots.findIndex(s => s.id === id);
     if (index < 0 || !session) return;
-    const slot = config.slots[index], owner = session;
+    const slot = config.slots[index], owner = session, ownerLayer = activeLayer;
     const neighbour = config.slots[index + 1]?.id ?? config.slots[index - 1]?.id;
     changed({ ...config, slots: config.slots.filter(s => s.id !== id) }, { render: 'keys' });
     const target = neighbour ? keysPanel.querySelector<HTMLElement>(`[data-remove="${neighbour}"]`) : keysPanel.querySelector<HTMLElement>('[data-action="add"]');
     target?.focus();
-    toast(removedMessage(slot), { action: { label: 'Undo', run: () => undoRemove(owner, slot, index) } });
+    toast(removedMessage(slot), { action: { label: 'Undo', run: () => undoRemove(owner, slot, index, ownerLayer) } });
   }
 
-  function undoRemove(owner: ProjectSession, slot: HolderConfig['slots'][number], index: number): void {
-    if (session !== owner) return;
+  function undoRemove(owner: ProjectSession, slot: HolderConfig['slots'][number], index: number, ownerLayer: number): void {
+    if (session !== owner || activeLayer !== ownerLayer) return;
     changed(reinsertSlot(config, slot, index), { render: 'keys' });
     if (keyDialog.open) { renderCatalog(); catalogTotal.textContent = catalogTotalText(config.slots.length); return; }
     const restored = keysPanel.querySelector<HTMLElement>(`[data-remove="${slot.id}"]`);
     if (isShown(restored)) restored.focus();
   }
+
+  keysPanel.addEventListener('click', event => {
+    const target = event.target as Element;
+    const input = target.closest('label')?.querySelector<HTMLInputElement>('[data-template-switch]');
+    if (input?.getAttribute('aria-disabled') !== 'true') return;
+    event.preventDefault();
+    toast(ORGANIZER_TYPE_LOCK_HINT);
+  }, true);
+  keysPanel.addEventListener('keydown', event => {
+    const input = event.target as HTMLInputElement;
+    if (input.matches('[data-template-switch][aria-disabled="true"]') && [' ', 'Enter', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
+      event.preventDefault();
+      toast(ORGANIZER_TYPE_LOCK_HINT);
+    }
+  });
 
   keysPanel.addEventListener('input', event => {
     const input = event.target as HTMLInputElement;
@@ -897,6 +1107,48 @@ export function createEditor(env: EditorEnv): Editor {
   });
   keysPanel.addEventListener('dragend', () => { dragging = undefined; clearDropMarks(); });
 
+  const layerManager = element('layer-manager');
+  let draggingLayer: number | undefined;
+  const clearLayerDropMarks = () => layerManager.querySelectorAll('.drop-before, .drop-after, .dragging')
+    .forEach(el => el.classList.remove('drop-before', 'drop-after', 'dragging'));
+  layerManager.addEventListener('keydown', event => {
+    const handle = (event.target as Element).closest<HTMLElement>('[data-reorder-layer]');
+    if (!handle || !['ArrowUp', 'ArrowDown'].includes(event.key)) return;
+    event.preventDefault();
+    const from = Number(handle.dataset.reorderLayer);
+    reorderLayer(from, from + (event.key === 'ArrowUp' ? 1 : -1));
+  });
+  layerManager.addEventListener('dragstart', event => {
+    const row = (event.target as Element).closest<HTMLElement>('[data-layer-row][draggable="true"]');
+    if (!row || !canLeaveLayer()) { event.preventDefault(); return; }
+    draggingLayer = Number(row.dataset.layerRow);
+    event.dataTransfer?.setData('text/plain', String(draggingLayer));
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+    row.classList.add('dragging');
+  });
+  layerManager.addEventListener('dragover', event => {
+    const row = (event.target as Element).closest<HTMLElement>('[data-layer-row]');
+    if (draggingLayer === undefined || !row) { clearLayerDropMarks(); return; }
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    const rect = row.getBoundingClientRect();
+    const after = event.clientY > rect.top + rect.height / 2;
+    layerManager.querySelectorAll('.drop-before, .drop-after').forEach(el => el.classList.remove('drop-before', 'drop-after'));
+    row.classList.add(after ? 'drop-after' : 'drop-before');
+  });
+  layerManager.addEventListener('drop', event => {
+    const row = (event.target as Element).closest<HTMLElement>('[data-layer-row]');
+    if (draggingLayer !== undefined && row) {
+      event.preventDefault();
+      const target = Number(row.dataset.layerRow);
+      const after = row.classList.contains('drop-after');
+      if (draggingLayer !== target) reorderLayer(draggingLayer, dropIndex(draggingLayer, target, !after));
+    }
+    draggingLayer = undefined;
+    clearLayerDropMarks();
+  });
+  layerManager.addEventListener('dragend', () => { draggingLayer = undefined; clearLayerDropMarks(); });
+
   /* ───────────── Add keys dialog ───────────── */
 
   function renderCatalog(): void {
@@ -935,12 +1187,12 @@ export function createEditor(env: EditorEnv): Editor {
     if (!session) return;
     const result = removeOneOfType(config, type);
     if (!result) return;
-    const owner = session;
+    const owner = session, ownerLayer = activeLayer;
     changed(result.config, { render: 'keys' });
     catalogTotal.textContent = catalogTotalText(config.slots.length, { verb: 'Removed', type });
     refreshCatalog(`[data-remove-type="${type}"]`, `[data-add-type="${type}"]`);
     if (result.custom) {
-      toast(removedMessage(result.slot), { action: { label: 'Undo', run: () => undoRemove(owner, result.slot, result.index) } });
+      toast(removedMessage(result.slot), { action: { label: 'Undo', run: () => undoRemove(owner, result.slot, result.index, ownerLayer) } });
     }
   }
 
@@ -954,6 +1206,14 @@ export function createEditor(env: EditorEnv): Editor {
 
   /* ───────────── Preview and generation ───────────── */
 
+  function syncPreviewFocus(): void {
+    if (!session) return;
+    const item = !allLayers && config.template === 'inventory_tray'
+      ? traySetItems(workingProject()).find(item => item.layerIndex === activeLayer && (item.kind === 'lid') === activeLid)
+      : undefined;
+    preview?.setFocusedPart(item?.id);
+  }
+
   function setExploded(value: boolean): void {
     exploded = value;
     preview?.setExploded(value);
@@ -961,8 +1221,9 @@ export function createEditor(env: EditorEnv): Editor {
   }
 
   function invalidate(): void {
+    downloadController?.abort();
+    if (downloadDialog.open) initialiseDownload(false);
     revision++;
-    readyRevision = -1;
     controller?.abort();
     clearTimeout(debounce);
     errorAnnouncer.cancel();
@@ -977,13 +1238,11 @@ export function createEditor(env: EditorEnv): Editor {
     }
     if (tooSmall()) {
       setPreviewState('too-small');
-      errorAnnouncer.schedule(traySettingsState(config).size.readout);
+      errorAnnouncer.schedule(sizeState().readout);
       return;
     }
     errorAnnouncer.reset(); // a fixed error is spoken again if it comes back
-    if (!config.slots.length) {
-      currentProject = undefined;
-      meshes = new Map();
+    if (!status().keys) {
       displayedToken = -1;
       dimensions.textContent = '';
       explodeButton.hidden = true;
@@ -1053,11 +1312,11 @@ export function createEditor(env: EditorEnv): Editor {
     card.toggleAttribute('data-stale', hasModel && (STALE_STATES.has(state) || (state === 'generating' && foreign)));
     viewer.style.visibility = state === 'empty' ? 'hidden' : '';
     renderChip();
-    const size = state === 'too-small' ? traySettingsState(config).size : undefined;
+    const size = state === 'too-small' ? sizeState() : undefined;
     const model = previewOverlay(state, {
       errors: errorCount(), message: failureMessage,
       required: size && { width: size.requiredWidth, depth: size.requiredDepth },
-      grow: size?.grow ?? undefined,
+      grow: size?.grow ?? undefined, cancellable: !!pendingResize,
     });
     const html = model ? `<div class="overlay-card${model.tone === 'error' ? ' is-error' : ''}">${icon(model.icon, 'overlay-icon')}<p class="overlay-text">${esc(model.text)}</p>`
       + `<div class="overlay-actions">${model.actions.map(a => `<button type="button" class="button ${a.primary ? 'primary' : 'secondary'}" data-action="${a.action}">`
@@ -1084,7 +1343,7 @@ export function createEditor(env: EditorEnv): Editor {
 
   function renderDownloadState(): void {
     const s = status();
-    const state = downloadButtonState(s);
+    const state = downloadButtonState({ ...s, state: 'ready' });
     for (const button of downloadButtons) {
       button.setAttribute('aria-disabled', String(state.blocked));
       button.dataset.download = state.action;
@@ -1112,7 +1371,7 @@ export function createEditor(env: EditorEnv): Editor {
     const generated = new Map<string, ArrayBuffer>();
     let legacyLid: ReturnType<typeof readLegacyLidSize>;
     try {
-      const project = buildProject(config);
+      const project = buildTraySet(workingProject());
       if (!project.parts.length) throw new Error('Add a key to create your organizer.');
       for (let i = 0; i < project.parts.length; i++) {
         const part = project.parts[i];
@@ -1120,11 +1379,12 @@ export function createEditor(env: EditorEnv): Editor {
         renderChip();
         if (downloadDialog.open) renderDownloadDialog();
         let bytes = meshCache.get(part.scad);
-        if (part.id === 'tray-lid') legacyLid = lidMetricCache.get(part.scad);
+        if (part.id.endsWith('tray-lid')) legacyLid = lidMetricCache.get(part.scad);
+        if (part.id.endsWith('tray-lid') && config.options.tray.lidTextPercent === undefined && config.options.tray.lidText.trim() && !legacyLid) bytes = undefined;
         if (!bytes) {
           bytes = await renderScad(part.scad, {
             jobId: `${jobRevision}-${i}`, revision: jobRevision, partId: part.id, signal: abort.signal,
-            onLog: line => { if (part.id === 'tray-lid') legacyLid = readLegacyLidSize(line) ?? legacyLid; },
+            onLog: line => { if (part.id.endsWith('tray-lid')) legacyLid = readLegacyLidSize(line) ?? legacyLid; },
           });
           if (stale()) return;
           if (meshCache.size >= MESH_CACHE_SIZE) {
@@ -1133,7 +1393,7 @@ export function createEditor(env: EditorEnv): Editor {
             lidMetricCache.delete(oldest);
           }
           meshCache.set(part.scad, bytes);
-          if (part.id === 'tray-lid' && legacyLid) lidMetricCache.set(part.scad, legacyLid);
+          if (part.id.endsWith('tray-lid') && legacyLid) lidMetricCache.set(part.scad, legacyLid);
         }
         generated.set(part.id, bytes);
       }
@@ -1141,7 +1401,7 @@ export function createEditor(env: EditorEnv): Editor {
       // Older projects store lid text in millimetres. The first lid render reports the exact
       // percentage; store it without counting as an edit (no new project, no "Edited" change).
       const tray = config.options.tray;
-      if (config.template === 'inventory_tray' && tray.lid && tray.lidTextPercent === undefined) {
+      if (!allLayers && activeLid && config.template === 'inventory_tray' && tray.lid && tray.lidTextPercent === undefined) {
         const migration = legacyLid ?? (!tray.lidText.trim() ? { percent: 100, rotation: 0 as const } : undefined);
         if (migration) {
           const next = structuredClone(config);
@@ -1158,18 +1418,15 @@ export function createEditor(env: EditorEnv): Editor {
         toast('Model ready. Some reference keys could not be displayed.');
       }
       if (stale()) return;
-      currentProject = project;
-      meshes = generated;
       displayedToken = token;
       preview?.setShowKeys(env.prefs().showKeys);
       preview?.setExploded(exploded);
-      readyRevision = jobRevision;
+      syncPreviewFocus();
       dimensions.innerHTML = `${project.dimensions.map(n => n.toFixed(1).replace(/\.0$/, '')).join(' <i>×</i> ')} <small>mm</small>`;
       renderFilament(generated);
-      fillPartOptions(project);
       explodeButton.hidden = project.parts.length < 2;
       setPreviewState('ready');
-      announceModel(downloadDialog.open ? `Model ready. ${primaryDownloadLabel(selectedFormat(), project.parts.length, partSelect.value || undefined)} is available.` : 'Model ready.');
+      if (!downloadDialog.open) announceModel('Model ready.');
     } catch (error) {
       if (stale()) return;
       console.error(error);
@@ -1211,70 +1468,118 @@ export function createEditor(env: EditorEnv): Editor {
 
   const selectedFormat = (): DownloadFormat => (downloadDialog.querySelector<HTMLInputElement>('input[name="format"]:checked')?.value ?? '3mf') as DownloadFormat;
 
-  function fillPartOptions(project: ProjectGeometry): void {
-    const value = partSelectValue(partSelect.value, partSelect.options.length, project.parts.map(p => p.id));
-    partSelect.innerHTML = (project.parts.length > 1 ? `<option value="">All ${project.parts.length} parts</option>` : '')
-      + project.parts.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
-    partSelect.value = value;
-  }
-
   function renderDownloadTips(): void {
-    const tip = printTip(config);
-    trayTip.innerHTML = tip ? `${icon('info')}<span>${esc(tip)}</span>` : '';
-    trayTip.hidden = !tip;
     dockTip.hidden = config.template !== 'desktop_dock';
   }
 
   function renderDownloadDialog(): void {
-    const parts = currentProject?.parts ?? [];
-    partField.hidden = parts.length < 2;
-    const format = selectedFormat();
-    const partId = partSelect.value || undefined;
-    const note = formatNote(format, isZipDownload(format, parts.length, partId));
+    const parts = downloadGeometry?.parts ?? [];
+    const format = selectedFormat(), total = downloadSource?.parts.length ?? 0;
+    const note = parts.length ? formatNote(format, isZipDownload(format, parts.length)) : 'Select at least one tray or lid to download.';
     formatNoteEl.textContent = note;
     formatNoteEl.hidden = !note;
-    const ready = readyRevision === revision && !!currentProject;
-    downloadFileButton.disabled = !ready;
-    downloadFileLabel.textContent = previewState === 'generating' ? preparingLabel(progress) : primaryDownloadLabel(format, parts.length, partId);
-    // Why the button is disabled, with Try again: the preview overlay is behind the modal.
-    const problem = downloadDialogStatus(previewState, failureMessage);
+    const count = downloadDialog.querySelector('#download-layer-count');
+    if (count) count.textContent = parts.length === total ? `All ${total} selected` : `${parts.length} of ${total} selected`;
+    downloadFileButton.disabled = downloadStatus !== 'ready' || !parts.length;
+    downloadFileLabel.textContent = downloadStatus === 'generating' ? preparingLabel(downloadProgress) : primaryDownloadLabel(format, parts.length);
+    const problem = downloadDialogStatus(downloadStatus, downloadError);
     const html = problem ? `${icon(problem.icon)}<span class="callout-text">${esc(problem.text)}</span><span class="callout-actions">`
       + problem.actions.map(a => `<button type="button" class="button secondary compact" data-action="${a.action}">${esc(a.label)}</button>`).join('') + '</span>' : '';
     if (downloadStateHtml !== html) { downloadStateHtml = html; downloadStateEl.innerHTML = html; }
     downloadStateEl.classList.toggle('error', problem?.tone === 'error');
-    downloadStateEl.classList.toggle('warn', previewState === 'offline-setup');
+    downloadStateEl.classList.toggle('warn', downloadStatus === 'offline-setup');
     downloadStateEl.hidden = !problem;
+  }
+
+  /** A separate render job keeps export selection independent of the editing preview. */
+  async function prepareDownload(): Promise<void> {
+    downloadController?.abort();
+    const ticket = ++downloadTicket, abort = new AbortController();
+    downloadController = abort;
+    const stale = () => abort.signal.aborted || ticket !== downloadTicket || !session;
+    downloadMeshes = new Map();
+    downloadGeometry = downloadSource ? selectTrayParts(downloadSource, downloadSelection) : undefined;
+    const geometry = downloadGeometry;
+    downloadProgress = { index: 0, total: geometry?.parts.length ?? 0 };
+    downloadStatus = geometry?.parts.length ? 'generating' : 'empty';
+    downloadError = '';
+    renderDownloadDialog();
+    if (!geometry?.parts.length) return;
+    try {
+      await env.bootGate;
+      if (stale()) return;
+      for (const [i, part] of geometry.parts.entries()) {
+        downloadProgress.index = i;
+        renderDownloadDialog();
+        let bytes = meshCache.get(part.scad);
+        if (!bytes) {
+          bytes = await renderScad(part.scad, { jobId: `download-${ticket}-${i}`, revision: ticket, partId: part.id, signal: abort.signal,
+            onLog: line => { if (part.id.endsWith('tray-lid')) { const metric = readLegacyLidSize(line); if (metric) lidMetricCache.set(part.scad, metric); } },
+          });
+          if (stale()) return;
+          if (meshCache.size >= MESH_CACHE_SIZE) {
+            const oldest = meshCache.keys().next().value!;
+            meshCache.delete(oldest); lidMetricCache.delete(oldest);
+          }
+          meshCache.set(part.scad, bytes);
+        }
+        downloadMeshes.set(part.id, bytes);
+      }
+      if (stale()) return;
+      downloadStatus = 'ready';
+      renderDownloadDialog();
+      announce(downloadAnnouncer, `${primaryDownloadLabel(selectedFormat(), geometry.parts.length)} is ready.`);
+    } catch (error) {
+      if (stale()) return;
+      downloadError = errorText(error);
+      downloadStatus = isOfflineSetupFailure(downloadError, env.pwaStatus(), navigator.onLine) ? 'offline-setup' : 'failed';
+      renderDownloadDialog();
+    }
+  }
+
+  function initialiseDownload(resetSelection = true): void {
+    downloadController?.abort();
+    downloadSource = downloadGeometry = undefined;
+    if (!session) return;
+    downloadConfig = structuredClone(session.config);
+    element('download-layers').innerHTML = downloadLayersMarkup(downloadConfig);
+    downloadResult.hidden = true;
+    try {
+      if (errorCount()) throw new Error('Fix the highlighted settings before downloading.');
+      downloadSource = buildTraySet(downloadConfig);
+      downloadSelection = new Set(downloadSource.parts.filter(p => resetSelection || downloadSelection.has(p.id)).map(p => p.id));
+      for (const checkbox of downloadDialog.querySelectorAll<HTMLInputElement>('[data-download-part]')) checkbox.checked = downloadSelection.has(checkbox.dataset.downloadPart!);
+      void prepareDownload();
+    } catch (error) {
+      downloadStatus = 'failed'; downloadError = errorText(error);
+      renderDownloadDialog();
+    }
   }
 
   function openDownloadDialog(): void {
     if (!session) return;
     session.flush();
-    downloadResult.hidden = true;
     renderDownloadTips();
-    renderDownloadDialog();
+    initialiseDownload();
     openDialog(downloadDialog, () => downloadButtons.find(b => isShown(b)));
   }
 
   function onDownloadButton(): void {
-    surfacePendingErrors(); // normally done on blur already
-    switch (downloadButtonState(status()).action) {
-      case 'add': openKeyDialog(); break;
-      case 'fix': focusFirstError(); break;
-      case 'retry': overlay.querySelector<HTMLElement>('[data-action="retry"]')?.focus(); break;
-      case 'open': openDownloadDialog(); break;
-    }
+    surfacePendingErrors();
+    if (errorCount()) { focusFirstError(); return; }
+    if (!status().keys) { openKeyDialog(); return; }
+    openDownloadDialog();
   }
 
   function downloadSelected(): void {
-    if (readyRevision !== revision || !currentProject || !session) return;
+    if (downloadStatus !== 'ready' || !downloadGeometry?.parts.length || !downloadConfig || !session) return;
     session.flush();
-    const partId = partSelect.value || undefined;
     const format = selectedFormat();
     try {
       if (format === '3mf') {
-        const bytes = build3mf(currentProject, meshes, { partId, title: session.name });
-        downloadFile(partFileName(session.name, currentProject, config.template, '3mf', partId), bytes.buffer as ArrayBuffer, 'model/3mf');
-      } else downloadParts(format, config, currentProject, meshes, partId, session.name);
+        const bytes = build3mf(downloadGeometry, downloadMeshes, { title: session.name });
+        downloadFile(partFileName(session.name, downloadGeometry, config.template, '3mf'), bytes.buffer as ArrayBuffer, 'model/3mf');
+      } else downloadParts(format, downloadConfig, downloadGeometry, downloadMeshes, undefined, session.name);
     } catch (error) {
       downloadResult.hidden = false;
       downloadResult.textContent = errorText(error);
@@ -1284,23 +1589,27 @@ export function createEditor(env: EditorEnv): Editor {
   function exportFile(): void {
     if (!session) return;
     session.flush();
-    downloadProject(config, session.name);
+    downloadProject(session.config, session.name);
   }
 
   downloadFileButton.addEventListener('click', downloadSelected);
   downloadDialog.addEventListener('change', event => {
-    if ((event.target as Element).matches('input[name="format"], #download-part')) { downloadResult.hidden = true; renderDownloadDialog(); }
+    const input = event.target as HTMLInputElement;
+    downloadResult.hidden = true;
+    if (input.dataset.downloadPart) {
+      if (input.checked) downloadSelection.add(input.dataset.downloadPart); else downloadSelection.delete(input.dataset.downloadPart);
+      void prepareDownload();
+    } else renderDownloadDialog();
   });
   downloadDialog.addEventListener('click', event => {
     const target = event.target as Element;
     if (target.closest('[data-action="backup"]')) exportFile();
     else if (target.closest('#download-state [data-action="retry"]')) {
-      invalidate();
-      // Try again is hidden while generating; the progress shows on the (disabled) Download button.
-      const active = document.activeElement;
-      if (!active || !downloadDialog.contains(active) || !isShown(active)) downloadDialog.querySelector<HTMLElement>('input[name="format"]:checked')?.focus();
+      if (downloadSource) void prepareDownload(); else initialiseDownload();
+      downloadDialog.querySelector<HTMLElement>('input[name="format"]:checked')?.focus();
     }
   });
+  downloadDialog.addEventListener('close', () => { downloadController?.abort(); downloadTicket++; });
   // downloadFile() reports each generated file, so a blocked automatic download can be saved by hand.
   window.addEventListener(DOWNLOAD_READY_EVENT, event => {
     const { name, url, byteLength } = (event as CustomEvent<DownloadReadyDetail>).detail;
@@ -1323,7 +1632,7 @@ export function createEditor(env: EditorEnv): Editor {
     if (s.persisted) {
       items.push({ label: 'Duplicate', icon: 'copy', run: () => duplicateFromEditor(env.actions) });
       if (config.template === 'inventory_tray') {
-        const layer = matchingLayerAvailability(config);
+        const layer = matchingLayerAvailability(s.config);
         items.push({ label: 'New matching layer', icon: 'layers', disabled: !layer.available, hint: layer.reason, run: newLayer });
       }
     }
@@ -1360,6 +1669,13 @@ export function createEditor(env: EditorEnv): Editor {
       moveKey(from, to);
       return;
     }
+    if (target.dataset.layer !== undefined) { selectLayer(Number(target.dataset.layer), target.dataset.lid === 'true'); return; }
+    if (target.dataset.lidMenu !== undefined) { lidMenu(target, Number(target.dataset.lidMenu)); return; }
+    if (target.dataset.layerMenu !== undefined) { layerMenu(target, Number(target.dataset.layerMenu)); return; }
+    if (target.dataset.rotate) {
+      changed({ ...config, slots: config.slots.map(s => s.id === target.dataset.rotate ? { ...s, rotation: s.rotation === 90 ? 0 : 90 } : s) }, { render: 'keys' });
+      return;
+    }
     if (target.dataset.occupied) {
       changed({ ...config, slots: config.slots.map(s => (s.id === target.dataset.occupied ? { ...s, occupied: !s.occupied } : s)) }, { render: 'keys' });
       return;
@@ -1371,11 +1687,31 @@ export function createEditor(env: EditorEnv): Editor {
       case 'download': onDownloadButton(); break;
       case 'backup': exportFile(); break;
       case 'add': openKeyDialog(); break;
+      case 'arrange-compactly': {
+          const before = structuredClone(config), owner = session, index = activeLayer;
+          const next = compactTray(config);
+          if (next === config) { toast('Keys already use the most compact layout found. Choose Columns in Tray settings to return to a grid.'); return; }
+          changed(next, { render: 'keys' });
+          const after = JSON.stringify(config);
+          toast('Keys rotated and arranged compactly. Choose Columns in Tray settings to return to a grid.', { action: { label: 'Undo', run: () => {
+            if (session === owner && activeLayer === index && JSON.stringify(config) === after) changed(before, { render: 'keys' });
+          } } });
+        break;
+      }
       case 'show-error': focusFirstError(); break;
       case 'lock-footprint': setFootprint('lock'); break;
       case 'grow-footprint': setFootprint('grow'); break;
-      case 'auto-footprint': setFootprint('auto'); break;
+      case 'cancel-resize':
+        pendingResize = undefined; match = undefined;
+        config = projectLayers(session!.config)[activeLayer].config;
+        inputErrors.clear(); clearPendingErrors();
+        update('all'); refreshCatalog(); invalidate();
+        break;
       case 'new-layer': newLayer(); break;
+      case 'new-lid': newLid(); break;
+      case 'all-layers':
+        if (canLeaveLayer()) { allLayers = true; setExploded(true); renderLayers(); syncPreviewFocus(); }
+        break;
       case 'help-stacking': env.openHelp('help-stacking'); break;
       case 'dismiss-dock-notice': dismissDockNotice(); break;
       case 'retry': invalidate(); break;
@@ -1415,9 +1751,12 @@ export function createEditor(env: EditorEnv): Editor {
     close();
     openToken++;
     session = new ProjectSession(env.store.local, start, events, { session: env.store.session });
-    config = session.config;
+    activeLayer = Math.min(options.ui?.layer ?? 0, projectLayers(session.config).length - 1);
+    allLayers = options.ui?.allLayers ?? session.config.template === 'inventory_tray';
+    config = projectLayers(session.config)[activeLayer].config;
+    activeLid = options.ui?.lid === true && config.options.tray.lid;
     panel = options.ui?.panel ?? 'keys';
-    panelScroll.keys = panelScroll.size = panelScroll.settings = 0;
+    panelScroll.keys = panelScroll.size = panelScroll.settings = panelScroll.layers = 0;
     match = undefined;
     inputErrors.clear();
     clearPendingErrors();
@@ -1430,15 +1769,12 @@ export function createEditor(env: EditorEnv): Editor {
     renameError.hidden = true;
     hideRemoteBanner();
     setExploded(true);
-    currentProject = undefined;
-    meshes = new Map();
-    readyRevision = -1;
     dimensions.textContent = '';
     explodeButton.hidden = true;
-    partSelect.innerHTML = '';
     panelBody.scrollTop = 0;
     settingsPanel.dataset.template = '';
     update('all');
+    syncPreviewFocus();
     renderSaveState();
     invalidate();
     const ui = options.ui;
@@ -1459,13 +1795,14 @@ export function createEditor(env: EditorEnv): Editor {
     // Detach first: close() runs while the URL already shows the next route (Back/Forward, another
     // project), so onSaved from the rename or the final flush must not sync the URL to this project.
     session = undefined;
+    pendingResize = undefined;
+    downloadController?.abort(); downloadTicket++;
     controller?.abort();
     clearTimeout(debounce);
     clearTimeout(chipTimer);
     clearPendingErrors();
     errorAnnouncer.cancel();
     revision++;
-    readyRevision = -1;
     if (pendingName && pendingName !== s.name) {
       try { s.rename(pendingName); } catch (error) { toast(renameErrorText(error)); }
     }
@@ -1483,11 +1820,12 @@ export function createEditor(env: EditorEnv): Editor {
     open,
     close,
     openKeyDialog,
+    selectLayer,
     focusHeading: () => titleEl.focus(),
     // pagehide, hidden and app updates: an open rename is committed too (unload fires no blur).
     flush: () => { if (renaming) finishRename(true, false); return session?.flush() ?? true; },
-    stopGeneration: () => { controller?.abort(); clearTimeout(debounce); },
-    uiState: () => (session ? { panel, panelScroll: currentScroll(), windowScroll: window.scrollY } : undefined),
+    stopGeneration: () => { controller?.abort(); downloadController?.abort(); clearTimeout(debounce); },
+    uiState: () => (session ? { panel, panelScroll: currentScroll(), windowScroll: window.scrollY, layer: activeLayer, allLayers, lid: activeLid } : undefined),
     handleStorageEvent: event => session?.handleStorageEvent(event),
     sync: () => session?.sync(),
     applyPrefs,

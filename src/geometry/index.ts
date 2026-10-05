@@ -1,11 +1,13 @@
 import type { HolderConfig, KeyPlacement, KeyType, PartSpec, ProjectGeometry, Slot, Vec3 } from '../types';
-import { scadCall, FRONT_TEXT_FIT, TRAY_RETENTION, TRAY_STACK, TRAY_STACK_PILLAR, TRAY_LID, KEY_LABEL_LAYOUT, trayRetentionBounds } from './library';
+import { scadCall, FRONT_TEXT_FIT, TRAY_RETENTION, TRAY_STACK, TRAY_STACK_PILLAR, TRAY_LID, KEY_LABEL_LAYOUT, trayRetentionBounds, trayRetainsKey } from './library';
+import { CN_FLAT_PRY } from './c-nano-support';
 import { lidExplodeOffset } from '../preview-layout';
 import { CI_INVENTORY_TOUCH_RELIEF } from './ci-touch';
 import { traySlideDirection } from '../tray-slide';
 import { H20_V7 } from './tray-h20';
 import { TRAY_SNAP } from './tray-snap';
 import { trayStackGap } from './tray-stack';
+import { packRectangles } from './packing';
 export { trayStackGap } from './tray-stack';
 export { buildKeyScad } from './keys';
 export { TRAY_STACK } from './library';
@@ -21,7 +23,7 @@ export function trayH20Enabled(config: HolderConfig): boolean {
 }
 export function trayRetentionSpec(type: KeyType) {
   const spec = TRAY_RETENTION[type];
-  return { ...spec, peakHeight: 1.25 };
+  return { ...spec, peakHeight: trayRetainsKey(type) ? 1.25 : 0 };
 }
 
 export const keyDimensions: Record<KeyType, { length: number; thickness: number; pocketLength: number; socketDepth: number }> = {
@@ -32,6 +34,14 @@ export const keyDimensions: Record<KeyType, { length: number; thickness: number;
   CK: { length: 29.5, thickness: 5, pocketLength: 30.6, socketDepth: 6.6 },
   CI: { length: 40.3, thickness: 5, pocketLength: 41.6, socketDepth: 6.6 },
 };
+
+/** Labels sit beyond the complete opening, including the C Nano pry relief. */
+export const trayPocketRearExtent = (type: KeyType) => type === 'CN' ? CN_FLAT_PRY.rearExtent : keyDimensions[type].pocketLength / 2;
+
+function trayFingerScoop(type: KeyType, radius: number) {
+  return type === 'CN' ? { radius: CN_FLAT_PRY.noseRadius, centerY: CN_FLAT_PRY.noseCenterY }
+    : { radius, centerY: keyDimensions[type].pocketLength / 2 };
+}
 
 const zero = (): Vec3 => [0, 0, 0];
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, Number.isFinite(v) ? v : min));
@@ -71,13 +81,37 @@ function layout(n: number, columns: number, pitchX: number, pitchY: number, yOff
 
 function keyPlacement(slot: Slot, x: number, y: number, top: number, flat: boolean, partId: string): KeyPlacement {
   const d = keyDimensions[slot.type];
-  if (flat) return { slotId: slot.id, type: slot.type, partId, position: [x, y - d.length / 2, top - (d.thickness - 0.4) + d.thickness / 2], rotation: zero() };
+  if (flat) {
+    const turned = slot.rotation === 90;
+    return { slotId: slot.id, type: slot.type, partId,
+      position: [x + (turned ? d.length / 2 : 0), y - (turned ? 0 : d.length / 2), top - (d.thickness - 0.4) + d.thickness / 2],
+      rotation: [0, 0, turned ? Math.PI / 2 : 0] };
+  }
   const reverse = slot.type === 'AN' || slot.type === 'CN' || slot.type === 'CK' || slot.type === 'CI';
   return { slotId: slot.id, type: slot.type, partId, position: [x, y, top - d.socketDepth + (reverse ? d.length : 0)], rotation: [Math.PI / 2, 0, reverse ? Math.PI : 0] };
 }
 
 function placements(slots: Slot[], xy: Point[], top: number, flat: boolean, partId: string): KeyPlacement[] {
   return slots.flatMap((slot, i) => slot.occupied ? [keyPlacement(slot, xy[i][0], xy[i][1], top, flat, partId)] : []);
+}
+
+/** Full pocket, scoop, label and retention envelope, rotated around the pocket center. */
+export function traySlotEnvelope(config: HolderConfig, slot: Slot) {
+  const rear = trayPocketRearExtent(slot.type);
+  const scoop = trayFingerScoop(slot.type, { small: 5, default: 6, large: 7 }[config.options.tray.scoop]);
+  const label = config.labels && slot.label.trim().length > 0;
+  const metrics = keyLabelMetrics(config);
+  let front = rear + (label ? metrics.edgeOffset + metrics.halfHeight : 0), back = scoop.centerY + scoop.radius;
+  let side = Math.max(TRAY_RETENTION[slot.type].pocketHalfWidth, scoop.radius,
+    slot.type === 'CI' ? CI_INVENTORY_TOUCH_RELIEF.outerHalfWidth : 0,
+    label ? Math.min(config.options.tray.spacing - 4, 24) / 2 : 0);
+  if ((config.options.tray.retention ?? true) && trayRetainsKey(slot.type)) {
+    const b = trayRetentionBounds(slot.type);
+    front = Math.max(front, -b.minY); back = Math.max(back, b.maxY); side = Math.max(side, b.maxX);
+  }
+  return slot.rotation === 90
+    ? { minX: -back, maxX: front, minY: -side, maxY: side }
+    : { minX: -side, maxX: side, minY: -front, maxY: back };
 }
 
 /** Inventory rows use the actual pocket, finger-access, and label envelopes.
@@ -97,46 +131,41 @@ export function inventoryTrayLayout(config: HolderConfig) {
   const rowGap = clamp(config.options.tray.rowGap ?? 4, 2, 40);
   const height = clamp(config.options.tray.height, traySnapEnabled(config) ? TRAY_SNAP.minimumHeight : 8.6, 20);
   const scoopRadius = { small: 5, default: 6, large: 7 }[config.options.tray.scoop];
-  const labelMetrics = keyLabelMetrics(config);
+  const envelopes = config.slots.map(slot => traySlotEnvelope(config, slot));
   const rows: { center: number; front: number; back: number; minY: number; maxY: number }[] = [];
   let end = 0;
   for (let start = 0; start < n; start += columns) {
-    let front = 0, back = 0;
-    for (const slot of config.slots.slice(start, start + columns)) {
-      const half = keyDimensions[slot.type].pocketLength / 2;
-      const hasLabel = config.labels && slot.label.trim().length > 0;
-      // Scaled Liberation Sans, including accents/descenders. Blank labels
-      // reserve no space; resizing leaves the nearest pocket edge clear.
-      front = Math.max(front, half + (hasLabel ? labelMetrics.edgeOffset + labelMetrics.halfHeight : 0));
-      back = Math.max(back, half + scoopRadius);
-      if (config.options.tray.retention ?? true) {
-        const bounds = trayRetentionBounds(slot.type);
-        front = Math.max(front, -bounds.minY);
-        back = Math.max(back, bounds.maxY);
-      }
-    }
+    const row = envelopes.slice(start, start + columns);
+    const front = Math.max(...row.map(e => -e.minY));
+    const back = Math.max(...row.map(e => e.maxY));
     const center = end + (rows.length ? rowGap : 0) + front;
     rows.push({ center, front, back, minY: center - front, maxY: center + back });
     end = center + back;
   }
   for (const row of rows) { row.center -= end / 2; row.minY -= end / 2; row.maxY -= end / 2; }
-  const xy: Point[] = config.slots.map((_, i) => [(i % columns - (columns - 1) / 2) * spacing, rows[Math.floor(i / columns)].center]);
-  const baseWidth = n ? Math.ceil((columns - 1) * spacing + 18.6 + 2 * marginX) : 0;
-  // Grow the surrounding frame for each connection; calibrated storage
-  // contours and the positions of keys remain unchanged.
-  // Front/back slides place receivers along the left/right edges. Reserve
-  // their web against labels and retention slots as well as the pocket itself.
-  const storageHalfWidth = Math.max(0, ...config.slots.map((slot, i) => Math.abs(xy[i][0]) + Math.max(
-    TRAY_RETENTION[slot.type].pocketHalfWidth,
-    scoopRadius,
-    slot.type === 'CI' ? CI_INVENTORY_TOUCH_RELIEF.outerHalfWidth : 0,
-    config.options.tray.retention ? trayRetentionBounds(slot.type).maxX : 0,
-    config.labels && slot.label.trim() ? Math.min(spacing - 4, 24) / 2 : 0,
-  )));
+  const rotated = config.slots.some(s => s.rotation === 90);
+  const colLeft = Array.from({ length: columns }, (_, col) => Math.max(9.3, ...envelopes.filter((_, i) => i % columns === col).map(e => -e.minX)));
+  const colRight = Array.from({ length: columns }, (_, col) => Math.max(9.3, ...envelopes.filter((_, i) => i % columns === col).map(e => e.maxX)));
+  const colX: number[] = [];
+  for (let col = 0; col < columns; col++) colX.push(col ? colX[col - 1] + (rotated ? Math.max(spacing, colRight[col - 1] + colLeft[col] + 2) : spacing) : 0);
+  const left = colLeft[0] ?? 0, right = (colX.at(-1) ?? 0) + (colRight.at(-1) ?? 0);
+  const centerX = rotated ? (right - left) / 2 : (columns - 1) * spacing / 2;
+  let xy: Point[] = config.slots.map((_, i) => [colX[i % columns] - centerX, rows[Math.floor(i / columns)].center]);
+  const packed = config.options.tray.arrangement === 'compact' && n ? packedTray(config) : undefined;
+  if (packed) {
+    xy = packed.items.map((p, i): Point => [p.x - packed.width / 2 - envelopes[i].minX, p.y - packed.height / 2 - envelopes[i].minY]);
+    end = packed.height;
+    rows.splice(0, rows.length, ...packed.items.map(p => ({ center: p.y + p.height / 2 - end / 2, front: p.height / 2, back: p.height / 2,
+      minY: p.y - end / 2, maxY: p.y + p.height - end / 2 })).sort((a, b) => a.center - b.center));
+  }
+  const baseWidth = n ? Math.ceil((packed ? packed.width : rotated ? left + right : (columns - 1) * spacing + 18.6) + 2 * marginX) : 0;
+  const storageHalfWidth = Math.max(0, ...envelopes.map((e, i) => Math.max(-xy[i][0] - e.minX, xy[i][0] + e.maxX)));
+  const emptyFixed = !n && config.options.tray.footprint !== null;
   const requiredWidth = n ? Math.max(baseWidth, trayH20Enabled(config) ? (verticalSlide ? H20_V7.minimumDepth : H20_V7.minimumWidth) : 0,
-    verticalSlide ? Math.ceil(2 * (storageHalfWidth + marginX)) : 0) : 0;
-  const pocketDepth = n ? Math.round((end + 2 * marginY) * 100) / 100 : 0;
-  const requiredDepth = n ? Math.max(pocketDepth, traySnapEnabled(config) ? TRAY_SNAP.minimumDepth : trayH20Enabled(config) ? (verticalSlide ? H20_V7.minimumWidth : H20_V7.minimumDepth) : 0) : 0;
+    verticalSlide ? Math.ceil(2 * (storageHalfWidth + marginX)) : 0) : emptyFixed
+    ? h20 ? (verticalSlide ? H20_V7.minimumDepth : H20_V7.minimumWidth) : traySnapEnabled(config) ? Math.ceil(18.6 + 2 * marginX) : 20 : 0;
+  const pocketDepth = n ? (rotated || packed ? Math.ceil((end + 2 * marginY) * 100 - 1e-8) : Math.round((end + 2 * marginY) * 100)) / 100 : 0;
+  const requiredDepth = n || emptyFixed ? Math.max(pocketDepth, traySnapEnabled(config) ? TRAY_SNAP.minimumDepth : trayH20Enabled(config) ? (verticalSlide ? H20_V7.minimumWidth : H20_V7.minimumDepth) : emptyFixed ? 20 : 0) : 0;
   const locked = config.options.tray.footprint;
   return {
     xy, rows, rowGap, columns,
@@ -147,11 +176,49 @@ export function inventoryTrayLayout(config: HolderConfig) {
   };
 }
 
+function packedTray(config: HolderConfig, rotate = false) {
+  const tray = config.options.tray;
+  const margin = Math.max(tray.margin, traySnapEnabled(config) ? TRAY_SNAP.margin : 5);
+  const vertical = trayH20Enabled(config) && traySlideDirection(tray.slideDirection).angle % 180 !== 0;
+  const marginX = vertical ? Math.max(margin, H20_V7.margin) : margin;
+  const marginY = trayH20Enabled(config) && !vertical ? Math.max(margin, H20_V7.margin) : margin;
+  const envelopes = config.slots.map(s => traySlotEnvelope(config, s));
+  return packRectangles(envelopes.map(e => ({ width: e.maxX - e.minX, height: e.maxY - e.minY })), {
+    gapX: Math.max(2, tray.spacing - 22), gapY: tray.rowGap, marginX, marginY, rotate,
+    ...(tray.footprint ? { available: { width: tray.footprint.width, height: tray.footprint.depth } } : {}),
+  });
+}
+
+/** Rotate and repack this layer; the normal Columns control returns to a row grid. */
+export function compactTray(config: HolderConfig): HolderConfig {
+  if (config.template !== 'inventory_tray' || !config.slots.length) return config;
+  const next = structuredClone(config);
+  const packed = packedTray(config, true);
+  next.options.tray.arrangement = 'compact';
+  next.slots.forEach((s, i) => { if (packed.items[i].turned) s.rotation = s.rotation === 90 ? 0 : 90; });
+  // Also try packing the current orientations. Never replace a smaller existing arrangement.
+  const unrotated = structuredClone(config); unrotated.options.tray.arrangement = 'compact';
+  const score = (c: HolderConfig) => {
+    const t = inventoryTrayLayout(c), fixed = c.options.tray.footprint;
+    return (fixed ? Math.max(0, t.requiredWidth - fixed.width) + Math.max(0, t.requiredDepth - fixed.depth) : 0) * 1e9
+      + t.requiredWidth * t.requiredDepth;
+  };
+  let best = [config, unrotated, next].reduce((best, c) => score(c) < score(best) ? c : best);
+  // Refine by key model too: a short Nano row can fill space beside a long vertical key.
+  for (let pass = 0; pass < 2; pass++) for (const type of new Set(config.slots.map(s => s.type))) {
+    const candidate = structuredClone(best);
+    candidate.options.tray.arrangement = 'compact';
+    candidate.slots.forEach(s => { if (s.type === type) s.rotation = s.rotation === 90 ? 0 : 90; });
+    if (score(candidate) < score(best)) best = candidate;
+  }
+  return best;
+}
+
 export function trayFootprintError(config: HolderConfig): string | undefined {
-  if (config.template !== 'inventory_tray' || !config.options.tray.footprint || !config.slots.length) return;
+  if (config.template !== 'inventory_tray' || !config.options.tray.footprint) return;
   const t = inventoryTrayLayout(config);
   if (t.width + .00001 < t.requiredWidth || t.depth + .00001 < t.requiredDepth) {
-    return `These keys and layout need at least ${t.requiredWidth} × ${t.requiredDepth} mm. Increase the locked tray dimensions, adjust the layout, or unlock the size.`;
+    return `${config.slots.length ? 'These keys and layout need' : 'This tray connection needs'} at least ${t.requiredWidth} × ${t.requiredDepth} mm. Increase the locked tray dimensions or adjust the layout.`;
   }
 }
 
@@ -165,23 +232,38 @@ export function inventoryTraySupports(config: HolderConfig, t = inventoryTrayLay
   const maxX = t.width / 2 - inside, maxY = t.depth / 2 - inside;
   if (maxX <= 0 || maxY <= 0) return [];
   const rectangles: { x: number; y: number; halfX: number; halfY: number }[] = [];
-  const scoops: Point[] = [];
+  const scoops: { x: number; y: number; radius: number }[] = [];
   const labelMetrics = keyLabelMetrics(config);
   for (const [i, slot] of config.slots.entries()) {
     const [x, y] = t.xy[i];
+    const rectStart = rectangles.length, scoopStart = scoops.length;
     const half = keyDimensions[slot.type].pocketLength / 2;
     rectangles.push({ x, y, halfX: TRAY_RETENTION[slot.type].pocketHalfWidth, halfY: half });
+    const rear = trayPocketRearExtent(slot.type);
+    if (slot.type === 'CN') rectangles.push({ x, y: y - (rear + half) / 2, halfX: CN_FLAT_PRY.rearHalfWidth, halfY: (rear - half) / 2 });
     if (slot.type === 'CI') rectangles.push({ x, y: y + CI_INVENTORY_TOUCH_RELIEF.centerY, halfX: CI_INVENTORY_TOUCH_RELIEF.outerHalfWidth, halfY: CI_INVENTORY_TOUCH_RELIEF.length / 2 });
-    scoops.push([x, y + half]);
-    if (config.labels && slot.label.trim()) rectangles.push({ x, y: y - half - labelMetrics.edgeOffset, halfX: t.labelWidth / 2, halfY: labelMetrics.halfHeight });
-    if (config.options.tray.retention) {
+    const scoop = trayFingerScoop(slot.type, t.scoopRadius);
+    scoops.push({ x, y: y + scoop.centerY, radius: scoop.radius });
+    if (config.labels && slot.label.trim()) rectangles.push({ x, y: y - rear - labelMetrics.edgeOffset, halfX: t.labelWidth / 2, halfY: labelMetrics.halfHeight });
+    if (config.options.tray.retention && trayRetainsKey(slot.type)) {
       const b = trayRetentionBounds(slot.type);
       rectangles.push({ x, y: y + (b.minY + b.maxY) / 2, halfX: b.maxX, halfY: (b.maxY - b.minY) / 2 });
+    }
+    if (slot.rotation === 90) {
+      for (const r of rectangles.slice(rectStart)) {
+        const dx = r.x - x, dy = r.y - y;
+        r.x = x - dy; r.y = y + dx;
+        [r.halfX, r.halfY] = [r.halfY, r.halfX];
+      }
+      for (const s of scoops.slice(scoopStart)) {
+        const dx = s.x - x, dy = s.y - y;
+        s.x = x - dy; s.y = y + dx;
+      }
     }
   }
   const clear = ([x, y]: Point) => Math.abs(x) <= maxX && Math.abs(y) <= maxY
     && rectangles.every((r) => Math.hypot(Math.max(0, Math.abs(x - r.x) - r.halfX), Math.max(0, Math.abs(y - r.y) - r.halfY)) >= clearanceRadius)
-    && scoops.every(([sx, sy]) => Math.hypot(x - sx, y - sy) >= t.scoopRadius + clearanceRadius);
+    && scoops.every(s => Math.hypot(x - s.x, y - s.y) >= s.radius + clearanceRadius);
   const gapYs = t.rows.slice(0, -1).map((row, i) => (row.maxY + t.rows[i + 1].minY) / 2);
   // Include exact center and column gaps, then a small search grid when an
   // asymmetric key/label envelope makes those ideal positions unavailable.
@@ -231,7 +313,8 @@ function trayScad(config: HolderConfig, t: ReturnType<typeof inventoryTrayLayout
     keyLabelMetrics(config).scale, config.options.tray.lid ?? false];
   if (trayH20Enabled(config)) args.push(traySlideDirection(config.options.tray.slideDirection).angle);
   return scadCall(traySnapEnabled(config) ? 'inventory_tray_snap' : trayH20Enabled(config) ? 'inventory_tray_h20' : 'inventory_tray', args,
-    frontTextArgs('side_text_percent', config.options.tray.sideText, config.options.tray.sideTextPercent));
+    { ...frontTextArgs('side_text_percent', config.options.tray.sideText, config.options.tray.sideTextPercent),
+      ...(config.slots.some(s => s.rotation === 90) ? { rotations: config.slots.map(s => s.rotation ?? 0) } : {}) });
 }
 
 /** A slide-lock layer's move from flush back to its entry position (the reverse of locking). */
@@ -259,7 +342,7 @@ export function dockLayout(config: HolderConfig) {
 /** Every part is a printable millimetre-space solid at Z=0. Assembly transforms
  * are separate from its SCAD source. Three.js only displays these generated meshes. */
 export function buildProject(config: HolderConfig): ProjectGeometry {
-  if (!config.slots.length) return { parts: [], keys: [], dimensions: zero() };
+  if (!config.slots.length && !(config.template === 'inventory_tray' && config.options.tray.footprint)) return { parts: [], keys: [], dimensions: zero() };
   const n = config.slots.length;
   const types = config.slots.map((s) => s.type);
   const ls = labels(config);
@@ -282,7 +365,7 @@ export function buildProject(config: HolderConfig): ProjectGeometry {
       const footprintError = trayFootprintError(config);
       if (footprintError) throw new Error(footprintError);
       const t = inventoryTrayLayout(config);
-      const retentionHeight = (config.options.tray.retention ?? true) ? Math.max(...types.map((type) => trayRetentionSpec(type).peakHeight)) : 0;
+      const retentionHeight = (config.options.tray.retention ?? true) ? Math.max(0, ...types.map((type) => trayRetentionSpec(type).peakHeight)) : 0;
       const hasLid = config.options.tray.lid ?? false;
       const snap = traySnapEnabled(config);
       const h20 = trayH20Enabled(config);

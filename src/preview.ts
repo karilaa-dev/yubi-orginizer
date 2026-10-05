@@ -11,6 +11,7 @@ export type PreviewTheme = 'light' | 'dark';
 export type PreviewQuality = 'high' | 'low';
 type PositionedObject = {
   object: THREE.Object3D;
+  partId?: string;
   position: Vec3;
   explode: Vec3;
   /** Slide before lifting (slide-lock), or ZERO. */
@@ -64,6 +65,8 @@ export class OrganizerPreview {
   private revision = 0;
   private fitted = false;
   private bounds = new THREE.Box3();
+  private focusedPart: string | undefined;
+  private focusTween: { frame: number; start: number; fromPosition: THREE.Vector3; fromTarget: THREE.Vector3; pose: CameraPose } | undefined;
   /** 0 = assembled, 1 = exploded; between the two while parts move (explodePathPoint). */
   private explodeProgress = 1;
   /** Explode / collapse in progress. The camera eases to the new framing until the user takes over. */
@@ -73,7 +76,10 @@ export class OrganizerPreview {
   } | undefined;
   private readonly onControlsChange = () => this.requestRender();
   /** Orbiting during an explode animation hands the camera back to the user. */
-  private readonly onControlsStart = () => { if (this.explodeTween) this.explodeTween.camera = undefined; };
+  private readonly onControlsStart = () => {
+    if (this.explodeTween) this.explodeTween.camera = undefined;
+    this.stopFocusTween();
+  };
   private readonly onWindowResize = () => this.resize();
   private readonly onVisibilityChange = () => {
     if (document.visibilityState === 'visible') this.requestRender();
@@ -189,7 +195,7 @@ export class OrganizerPreview {
           mesh.add(edge);
         }
         nextParts.add(mesh);
-        nextPlacements.push({ object: mesh, position: part.position, explode: part.explode, release: part.release ?? ZERO });
+        nextPlacements.push({ object: mesh, partId: part.id, position: part.position, explode: part.explode, release: part.release ?? ZERO });
       }
 
       try {
@@ -203,7 +209,7 @@ export class OrganizerPreview {
             const object = await this.createReference(key);
             nextKeys.add(object);
             const parent = this.keyParent(key, project.parts);
-            nextPlacements.push({ object, position: key.position, explode: parent?.explode ?? ZERO, release: parent?.release ?? ZERO });
+            nextPlacements.push({ object, partId: parent?.id, position: key.position, explode: parent?.explode ?? ZERO, release: parent?.release ?? ZERO });
           }
         }
       } catch (error) {
@@ -225,6 +231,8 @@ export class OrganizerPreview {
       return;
     }
 
+    const previousFraming = this.framingBounds();
+    this.stopFocusTween();
     this.disposeGroup(this.partGroup);
     this.disposeGroup(this.keyGroup);
     if (nextParts.children.length) this.partGroup.add(...[...nextParts.children]);
@@ -235,11 +243,13 @@ export class OrganizerPreview {
     this.applyQuality();
     this.keyGroup.visible = this.showKeys;
     this.applyPositions();
-    const previousSize = this.bounds.getSize(new THREE.Vector3()).length();
+    const previousSize = previousFraming.getSize(new THREE.Vector3()).length();
     this.refreshBounds();
-    const size = this.bounds.getSize(new THREE.Vector3()).length();
+    const framing = this.framingBounds();
+    const size = framing.getSize(new THREE.Vector3()).length();
     this.updateGround(this.bounds);
-    if (!this.fitted || previousSize === 0 || Math.abs(size / previousSize - 1) > 0.18) {
+    if (!this.fitted || previousSize === 0 || Math.abs(size / previousSize - 1) > 0.18
+      || framing.getCenter(new THREE.Vector3()).distanceTo(previousFraming.getCenter(new THREE.Vector3())) > .1) {
       this.fitCamera(!this.fitted);
     }
     this.container.dataset.partCount = String(project.parts.length);
@@ -255,8 +265,46 @@ export class OrganizerPreview {
     this.requestRender();
   }
 
+  /** Keep every part visible, but orbit and frame the item being edited. */
+  setFocusedPart(partId?: string): void {
+    if (this.disposed || this.focusedPart === partId) return;
+    this.stopFocusTween();
+    this.stopExplodeTween();
+    this.focusedPart = partId;
+    this.applyFocus();
+    this.refreshBounds();
+    if (!this.project) return;
+    const direction = this.camera.position.clone().sub(this.controls.target).normalize();
+    const pose = this.cameraPose(this.framingBounds(), direction);
+    if (document.visibilityState !== 'visible' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      this.applyPose(pose);
+      return;
+    }
+    this.focusTween = { frame: 0, start: performance.now(), fromPosition: this.camera.position.clone(), fromTarget: this.controls.target.clone(), pose };
+    this.focusTween.frame = requestAnimationFrame(this.stepFocus);
+  }
+
+  private readonly stepFocus = (now: number): void => {
+    const tween = this.focusTween;
+    if (!tween || this.disposed) return;
+    const t = Math.min(1, Math.max(0, now - tween.start) / 450);
+    const eased = t * t * (3 - 2 * t);
+    this.camera.position.lerpVectors(tween.fromPosition, tween.pose.position, eased);
+    this.controls.target.lerpVectors(tween.fromTarget, tween.pose.target, eased);
+    this.controls.update();
+    this.requestRender();
+    if (t < 1) tween.frame = requestAnimationFrame(this.stepFocus);
+    else { this.focusTween = undefined; this.applyPose(tween.pose); }
+  };
+
+  private stopFocusTween(): void {
+    if (this.focusTween) cancelAnimationFrame(this.focusTween.frame);
+    this.focusTween = undefined;
+  }
+
   setExploded(exploded: boolean): void {
     if (this.exploded === exploded) return;
+    this.stopFocusTween();
     this.exploded = exploded;
     const target = exploded ? 1 : 0;
     const animate = this.placements.length > 0 && !this.disposed && document.visibilityState === 'visible'
@@ -279,11 +327,12 @@ export class OrganizerPreview {
       return this.bounds.clone();
     };
     const from = boundsAt(1 - target), to = boundsAt(target);
+    const framing = this.framingBounds();
     this.explodeProgress = current;
     this.applyPositions();
     this.updateGround(from.union(to));
     const direction = this.camera.position.clone().sub(this.controls.target).normalize();
-    const pose = this.cameraPose(to, direction);
+    const pose = this.cameraPose(framing, direction);
     // Limits that fit both framings, so neither the controls nor the clip planes cut in while moving.
     this.controls.minDistance = Math.min(this.controls.minDistance, pose.radius * 0.7);
     this.controls.maxDistance = Math.max(this.controls.maxDistance, pose.distance * 7);
@@ -369,11 +418,13 @@ export class OrganizerPreview {
   }
 
   resetCamera(): void {
+    this.stopFocusTween();
     if (this.explodeTween) this.explodeTween.camera = undefined;
     this.fitCamera(true);
   }
 
   setView(view: PreviewView): void {
+    this.stopFocusTween();
     const direction = view === 'top'
       ? new THREE.Vector3(0, -0.005, 1).normalize()
       : view === 'front'
@@ -394,6 +445,7 @@ export class OrganizerPreview {
     this.renderer.domElement.removeEventListener('webglcontextlost', this.onContextLost);
     this.renderer.domElement.removeEventListener('webglcontextrestored', this.onContextRestored);
     this.stopExplodeTween();
+    this.stopFocusTween();
     this.controls.removeEventListener('change', this.onControlsChange);
     this.controls.removeEventListener('start', this.onControlsStart);
     this.controls.dispose();
@@ -503,6 +555,40 @@ export class OrganizerPreview {
     }
     this.renderer.shadowMap.needsUpdate = high;
     this.container.dataset.previewQuality = this.quality;
+    this.applyFocus();
+  }
+
+  private applyFocus(): void {
+    const focus = this.placements.some(p => p.partId === this.focusedPart) ? this.focusedPart : undefined;
+    for (const { object, partId } of this.placements) {
+      const muted = focus !== undefined && partId !== focus;
+      object.traverse(child => {
+        if (!(child instanceof THREE.Mesh || child instanceof THREE.LineSegments)) return;
+        const materials = Array.isArray(child.material) ? child.material : [child.material];
+        for (const material of materials) {
+          const base = material.userData.focusBase ??= { opacity: material.opacity, transparent: material.transparent, depthWrite: material.depthWrite };
+          material.opacity = base.opacity * (muted ? .25 : 1);
+          material.transparent = base.transparent || muted;
+          material.depthWrite = base.depthWrite && !muted;
+          material.needsUpdate = true;
+        }
+        child.castShadow = this.quality === 'high' && !muted;
+        child.receiveShadow = this.quality === 'high' && !muted && child.userData.referenceComponent !== 'touch';
+      });
+    }
+    this.container.dataset.focusedPart = focus ?? '';
+    this.renderer.shadowMap.needsUpdate = this.quality === 'high';
+    this.requestRender();
+  }
+
+  private framingBounds(): THREE.Box3 {
+    if (!this.focusedPart) return this.bounds.clone();
+    const bounds = new THREE.Box3();
+    for (const { object, partId } of this.placements) {
+      if (partId !== this.focusedPart || (!this.showKeys && object.parent === this.keyGroup)) continue;
+      bounds.union(new THREE.Box3().setFromObject(object));
+    }
+    return bounds.isEmpty() ? this.bounds.clone() : bounds;
   }
 
   private applyPositions(): void {
@@ -527,7 +613,7 @@ export class OrganizerPreview {
     const direction = requestedDirection?.clone() ?? (reset
       ? ISO_DIRECTION.clone()
       : this.camera.position.clone().sub(this.controls.target).normalize());
-    this.applyPose(this.cameraPose(this.bounds, direction));
+    this.applyPose(this.cameraPose(this.framingBounds(), direction));
   }
 
   /** Where the camera looks from to frame `bounds` along `direction`. */
@@ -545,9 +631,10 @@ export class OrganizerPreview {
     this.camera.position.copy(position);
     this.controls.target.copy(target);
     this.controls.minDistance = radius * 0.7;
-    this.controls.maxDistance = distance * 7;
+    const sceneSpan = this.bounds.getSize(new THREE.Vector3()).length();
+    this.controls.maxDistance = Math.max(distance * 7, sceneSpan * 4);
     this.camera.near = Math.max(radius / 1000, 0.01);
-    this.camera.far = distance * 16;
+    this.camera.far = Math.max(distance * 16, sceneSpan * 8);
     this.camera.updateProjectionMatrix();
     this.controls.update();
     this.fitted = true;

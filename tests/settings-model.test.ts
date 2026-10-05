@@ -14,14 +14,17 @@ describe('tray settings model', () => {
     expect(TRAY_GROUPS.map(g => g.title)).toEqual(['Stacking', 'Lid', 'Pockets & text']);
     expect(SIZE_SECTIONS.inventory_tray.map(s => s.title)).toEqual(['Size', 'Spacing']);
     expect(DEFAULT_OPEN_GROUPS.inventory_tray).toEqual(['stacking', 'lid']);
-    expect(panelOfControl('inventory_tray', 'tray.columns')).toBe('keys');
-    expect(panelOfControl('inventory_tray', 'labelSize')).toBe('keys');
+    expect(panelOfControl('inventory_tray', 'tray.columns')).toBe('settings');
+    expect(panelOfControl('inventory_tray', 'labelSize')).toBe('settings');
+    expect(panelOfControl('inventory_tray', 'tray.lidText')).toBe('settings');
+    expect(panelOfControl('inventory_tray', 'tray.connection')).toBe('layers');
+    expect(panelOfControl('inventory_tray', 'label-x')).toBe('keys');
     expect(panelOfControl('inventory_tray', 'tray.width')).toBe('size');
     expect(panelOfControl('inventory_tray', 'tray.margin')).toBe('size');
     expect(panelOfControl('inventory_tray', 'tray.rowGap')).toBe('size');
     expect(panelOfControl('inventory_tray', 'tray.sideTextPercent')).toBe('settings');
     expect(panelOfControl('desktop_dock', 'dock.depthMargin')).toBe('size');
-    expect(panelOfControl('desktop_dock', 'dock.columns')).toBe('keys');
+    expect(panelOfControl('desktop_dock', 'dock.columns')).toBe('settings');
     expect(groupOfControl('inventory_tray', 'tray.sideTextPercent')).toBe('pockets');
     expect(groupOfControl('inventory_tray', 'tray.margin')).toBeUndefined();
     expect(groupOfControl('inventory_tray', 'label-x')).toBeUndefined();
@@ -40,11 +43,53 @@ describe('tray settings model', () => {
   });
   it('marks retention tabs as untested', () => {
     const c = tray();
+    c.slots = c.slots.filter(slot => slot.type !== 'CN');
     expect(c.options.tray.retention).toBe(false);
     expect(traySettingsState(c).controls['tray.retention'].hint).toBe(RETENTION_NOTE);
     c.options.tray.retention = true;
     expect(summary(c, 'pockets')).toBe('Standard scoop · Tabs');
     expect(traySettingsState(c).groups.find(g => g.id === 'pockets')!.modified).toBe(true);
+  });
+  it('shows fixed C Nano access without changing saved scoop or tab values', () => {
+    const c = tray();
+    c.slots = c.slots.filter(slot => slot.type === 'CN');
+    Object.assign(c.options.tray, { scoop: 'large', retention: true });
+    const before = structuredClone(c);
+    const s = traySettingsState(c);
+    expect(s.controls['tray.scoop']).toMatchObject({ visible: true, disabled: true, hint: 'C Nano uses a fixed finger opening.' });
+    expect(s.controls['tray.retention']).toMatchObject({ visible: true, disabled: true, hint: 'C Nano uses pry access without tabs.' });
+    expect(s.groups.find(g => g.id === 'pockets')).toMatchObject({ summary: 'Fixed finger opening · No tabs', modified: false });
+    expect(c).toEqual(before);
+  });
+  it('keeps mixed-key pocket controls enabled and explains the C Nano exception', () => {
+    const c = tray();
+    Object.assign(c.options.tray, { scoop: 'large', retention: true });
+    const s = traySettingsState(c);
+    expect(s.controls['tray.scoop']).toMatchObject({ visible: true, disabled: false, hint: 'C Nano uses a fixed finger opening.' });
+    expect(s.controls['tray.retention']).toMatchObject({ visible: true, disabled: false, hint: `${RETENTION_NOTE} C Nano uses pry access without tabs.` });
+    expect(s.groups.find(g => g.id === 'pockets')).toMatchObject({ summary: 'Large scoop · Tabs (except C Nano)', modified: true });
+  });
+  it('keeps ordinary and empty tray pocket controls unchanged', () => {
+    const c = tray();
+    c.slots = c.slots.filter(slot => slot.type !== 'CN');
+    for (const slots of [c.slots, []]) {
+      const s = traySettingsState({ ...c, slots });
+      expect(s.controls['tray.scoop']).toMatchObject({ visible: true, disabled: false, hint: '' });
+      expect(s.controls['tray.retention']).toMatchObject({ visible: true, disabled: false, hint: RETENTION_NOTE });
+      expect(s.groups.find(g => g.id === 'pockets')!.summary).toBe('Standard scoop · No tabs');
+    }
+  });
+  it('bases C Nano controls on the active layer instead of other project layers', () => {
+    const nano = tray(), other = tray();
+    nano.slots = nano.slots.filter(slot => slot.type === 'CN');
+    other.slots = other.slots.filter(slot => slot.type === 'C');
+    const project = { ...nano, layers: [{ name: 'Other keys', config: other }] };
+    const nanoState = traySettingsState(nano, new Set(), undefined, project);
+    const otherState = traySettingsState(other, new Set(), undefined, project);
+    expect(nanoState.controls['tray.scoop'].disabled).toBe(true);
+    expect(nanoState.controls['tray.retention'].disabled).toBe(true);
+    expect(otherState.controls['tray.scoop']).toMatchObject({ disabled: false, hint: '' });
+    expect(otherState.controls['tray.retention']).toMatchObject({ disabled: false, hint: RETENTION_NOTE });
   });
   it('shows the front text size with the print note once there is text', () => {
     const c = tray();
@@ -65,7 +110,6 @@ describe('tray settings model', () => {
     expect(s.controls['tray.slideDirection'].visible).toBe(true);
     expect(s.controls['tray.lidTextPercent']).toMatchObject({ visible: true, disabled: false });
     expect(s.controls['tray.lidStyle'].hint).toBe('Thin ribbed panel. Uses less filament.');
-    expect(s.controls['tray.lid'].hint).toBe('On a stack, add the lid to the top layer only.');
     expect(s.connectionNote).toBe('Adds a 13 mm border on the two locking edges.');
     expect(summary(c, 'stacking')).toBe('Slide-lock · ↑ Back');
     expect(summary(c, 'lid')).toBe('Minimal lid · “WORK”');

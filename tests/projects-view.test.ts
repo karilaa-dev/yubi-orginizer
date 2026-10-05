@@ -89,7 +89,7 @@ describe('matching layer availability', () => {
   it('is only offered for stacked trays that have a size', () => {
     expect(matchingLayerAvailability(dock(2)).available).toBe(false);
     const c = defaultConfig();
-    expect(matchingLayerAvailability(c)).toEqual({ available: false, reason: 'Choose Stackable or Slide-lock first.' });
+    expect(matchingLayerAvailability(c)).toEqual({ available: true });
     c.options.tray.connection = 'h20_slide_v7';
     expect(matchingLayerAvailability(c)).toEqual({ available: true });
     c.slots = [];
@@ -207,34 +207,31 @@ describe('matching layer Undo', () => {
     const config = defaultConfig();
     config.options.tray.connection = 'stackable';
     const source = createProject(storage, { config, name: 'Desk' });
-    const result = createMatchingLayer(storage, source.id, { footprint: { width: 164, depth: 66.8 }, moveLid: false });
+    const result = createMatchingLayer(storage, source.id, { footprint: { width: 164, depth: 66.8 } });
     const open = vi.fn();
     const deps: ProjectActionsDeps = { store: { local: storage, persistent: true }, session: () => undefined, open, goHome: vi.fn(), refreshList: vi.fn() };
     return { storage, source, result, open, deps };
   }
 
-  it('removes an untouched layer for good and reverts the source', () => {
+  it('removes an untouched layer from the same project and reverts its settings', () => {
     const { storage, source, result, open, deps } = setup();
     undoMatchingLayer(result, deps);
-    expect(storage.getItem(projectKey(result.layer.id))).toBeNull();
+    expect(listProjects(storage).projects).toHaveLength(1);
     expect(getProject(storage, source.id)!.config).toEqual(result.previousSourceConfig);
     expect(open).toHaveBeenCalledWith(source.id);
   });
 
-  it('keeps a layer that was changed after it was created in Recently deleted', () => {
+  it('keeps subsequent edits when Undo would overwrite them', () => {
     const { storage, source, result, open, deps } = setup();
-    const edited = structuredClone(result.layer.config);
-    edited.slots = [createSlot('C'), createSlot('A')];
-    updateProjectConfig(storage, result.layer.id, edited);
+    const edited = structuredClone(result.source.config);
+    edited.layers![0].config.slots = [createSlot('C'), createSlot('A')];
+    updateProjectConfig(storage, source.id, edited);
     undoMatchingLayer(result, deps);
-    const layer = getProject(storage, result.layer.id)!;
-    expect(layer.deletedAt).toBeTruthy();
-    expect(layer.config.slots).toHaveLength(2);
-    expect(getProject(storage, source.id)!.config).toEqual(result.previousSourceConfig);
-    expect(open).toHaveBeenCalledWith(source.id);
+    expect(getProject(storage, source.id)!.config).toEqual(edited);
+    expect(open).not.toHaveBeenCalled();
   });
 
-  it('removes an untouched layer even when storage is too full for Recently deleted', () => {
+  it('undoes layer creation with a smaller write when storage is full', () => {
     const base = createMemoryStorage();
     let full = false;
     const storage: ProjectStorage = {
@@ -249,11 +246,11 @@ describe('matching layer Undo', () => {
     const config = defaultConfig();
     config.options.tray.connection = 'stackable';
     const source = createProject(storage, { config, name: 'Desk' });
-    const result = createMatchingLayer(storage, source.id, { footprint: { width: 164, depth: 66.8 }, moveLid: false });
+    const result = createMatchingLayer(storage, source.id, { footprint: { width: 164, depth: 66.8 } });
     full = true;
     const deps: ProjectActionsDeps = { store: { local: storage, persistent: true }, session: () => undefined, open: vi.fn(), goHome: vi.fn(), refreshList: vi.fn() };
     undoMatchingLayer(result, deps);
-    expect(storage.getItem(projectKey(result.layer.id))).toBeNull();
+    expect(listProjects(storage).projects).toHaveLength(1);
     expect(getProject(storage, source.id)!.config).toEqual(result.previousSourceConfig);
   });
 
@@ -264,7 +261,7 @@ describe('matching layer Undo', () => {
     updateProjectConfig(storage, source.id, edited);
     undoMatchingLayer(result, deps);
     expect(getProject(storage, source.id)!.config).toEqual(edited);
-    expect(getProject(storage, result.layer.id)!.deletedAt).toBeUndefined();
+    expect(getProject(storage, result.source.id)!.deletedAt).toBeUndefined();
     expect(open).not.toHaveBeenCalled();
   });
 });

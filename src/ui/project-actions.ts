@@ -5,10 +5,12 @@
  */
 import './shared.css';
 import { downloadProject } from '../export';
-import { inventoryTrayLayout } from '../geometry';
+import { MAX_LAYERS } from '../config';
+import { projectLayers } from '../layers';
+import { traySetLayout } from '../geometry/layers';
 import { icon } from '../icons';
 import {
-  createMatchingLayer, deleteProject, duplicateProject, getProject, listProjects, matchingLayerName,
+  createMatchingLayer, deleteProject, duplicateProject, getProject, listProjects,
   ProjectStoreError, reinsertProject, removeProject, restoreProject, updateProjectConfig,
   type BrowserStorage, type MatchingLayerResult, type ProjectRecord, type ProjectSession,
 } from '../projects';
@@ -22,7 +24,7 @@ export interface ProjectActionsDeps {
   /** The editor session in this tab, if any. */
   session(): ProjectSession | undefined;
   /** Navigates to #/p/<id>; WS4 disposes the previous session. */
-  open(id: string, options?: { addKeys?: boolean }): void;
+  open(id: string, options?: { addKeys?: boolean; layer?: number }): void;
   goHome(): void;
   /** Re-renders the Projects page if it is visible. */
   refreshList(): void;
@@ -104,13 +106,13 @@ export function confirmAction(options: { title: string; body: string; confirmLab
 export function matchingLayerAvailability(config: HolderConfig): { available: boolean; reason?: string } {
   if (config.template !== 'inventory_tray') return { available: false, reason: 'Matching layers are only available for inventory trays.' };
   const tray = config.options.tray;
-  if (tray.connection === 'none') return { available: false, reason: 'Choose Stackable or Slide-lock first.' };
-  if (tray.footprint === null && config.slots.length === 0) return { available: false, reason: 'Add keys first.' };
+  if (projectLayers(config).length >= MAX_LAYERS) return { available: false, reason: `${MAX_LAYERS} layers max.` };
+  if (tray.footprint === null && projectLayers(config).every(l => l.config.slots.length === 0)) return { available: false, reason: 'Add keys first.' };
   return { available: true };
 }
 
 function footprintOf(config: HolderConfig): { width: number; depth: number } {
-  const layout = inventoryTrayLayout(config);
+  const layout = traySetLayout(config);
   return { width: layout.width, depth: layout.depth };
 }
 
@@ -122,7 +124,7 @@ function readLive(deps: ProjectActionsDeps, id: string): ProjectRecord | undefin
 }
 
 /** Opens #layer-dialog for a saved tray. On create: opens the layer with Add keys and offers Undo. */
-export function openMatchingLayerDialog(sourceId: string, deps: ProjectActionsDeps): void {
+export function openMatchingLayerDialog(sourceId: string, deps: ProjectActionsDeps, sourceIndex?: number): void {
   const open = deps.session();
   // The layer copies the saved source: a latest edit that can't be saved (already reported) would be missing.
   if (open?.id === sourceId && !open.flush()) {
@@ -131,26 +133,28 @@ export function openMatchingLayerDialog(sourceId: string, deps: ProjectActionsDe
   }
   const source = readLive(deps, sourceId);
   if (!source) return;
+  const layers = projectLayers(source.config);
+  const index = sourceIndex ?? layers.length - 1;
+  const selected = layers[index].config;
   const availability = matchingLayerAvailability(source.config);
   if (!availability.available) { toast(availability.reason!); return; }
 
-  const tray = source.config.options.tray;
+  const tray = selected.options.tray;
   const { width, depth } = footprintOf(source.config);
   const size = `${fmt(width)} × ${fmt(depth)} mm`;
-  const connection = traySettingsState(source.config).groups.find(g => g.id === 'stacking')?.summary ?? '';
-  const suggested = matchingLayerName(source.name, listProjects(deps.store.local).projects.map(p => p.name));
-  const hasLid = tray.lid;
+  const connection = traySettingsState(selected).groups.find(g => g.id === 'stacking')?.summary ?? '';
+  const suggested = `Layer ${layers.length + 1}`;
+  const hasLid = layers.at(-1)!.config.options.tray.lid;
 
   const dialog = projectDialog('layer-dialog');
   dialog.setAttribute('aria-labelledby', 'layer-dialog-title');
   dialog.setAttribute('aria-describedby', 'layer-dialog-summary');
   dialog.innerHTML = `${dialogHeading('layer-dialog-title', 'New matching layer')}
     <form class="project-dialog-body" novalidate>
-      <p id="layer-dialog-summary">Creates an empty tray that stacks on ${esc(quoted(source.name))}: same size (${size}), connection (${esc(connection)}), height and layout.</p>
-      ${tray.footprint === null ? `<p class="callout">${icon('info')}<span>${esc(quoted(source.name))} switches to Fixed size at ${size} so the layers match. Its shape doesn't change.</span></p>` : ''}
+      <p id="layer-dialog-summary">Adds an empty tray to ${esc(quoted(source.name))}: shared size (${size}) and connection (${esc(connection)}), minimum spacing and retention tabs off.</p>
+      ${tray.footprint === null ? `<p class="field-hint">Fit to keys adjusts every tray to fit the contents of all layers.</p>` : ''}
       <label class="field" for="layer-name">Name<input id="layer-name" name="name" type="text" maxlength="80" autocomplete="off" value="${esc(suggested)}"/></label>
-      ${hasLid ? `<div><label class="toggle-row" for="layer-move-lid"><span>Move the lid to the new layer</span><input id="layer-move-lid" type="checkbox" role="switch" checked aria-describedby="layer-move-lid-hint"/><span class="switch" aria-hidden="true"></span></label>
-        <p class="field-hint" id="layer-move-lid-hint">The lid goes on the top layer.</p></div>` : ''}
+      ${hasLid ? '<p class="field-hint">The lid stays above the new tray at the top of the stack.</p>' : ''}
       <p class="inline-error" id="layer-error" role="alert" hidden></p>
       <div class="dialog-footer">
         <button type="button" class="button secondary" data-layer-cancel>Cancel</button>
@@ -165,13 +169,12 @@ export function openMatchingLayerDialog(sourceId: string, deps: ProjectActionsDe
   nameInput.addEventListener('input', () => { errorLine.hidden = true; nameInput.removeAttribute('aria-invalid'); });
   form.addEventListener('submit', event => {
     event.preventDefault();
-    const moveLid = hasLid && !!dialog.querySelector<HTMLInputElement>('#layer-move-lid')?.checked;
     let result: MatchingLayerResult;
     try {
       // Re-read: the footprint must be the source's size at the moment the layer is created.
       const current = getProject(deps.store.local, sourceId);
       if (!current || current.deletedAt) throw new Error(GONE);
-      result = createMatchingLayer(deps.store.local, sourceId, { footprint: footprintOf(current.config), moveLid, name: nameInput.value.trim() || suggested });
+      result = createMatchingLayer(deps.store.local, sourceId, { footprint: footprintOf(projectLayers(current.config)[index].config), sourceIndex: index, name: nameInput.value.trim() || suggested });
     } catch (error) {
       errorLine.textContent = messageOf(error);
       errorLine.hidden = false;
@@ -180,10 +183,9 @@ export function openMatchingLayerDialog(sourceId: string, deps: ProjectActionsDe
       return;
     }
     dialog.close();
-    const lidMoved = moveLid && result.previousSourceConfig.options.tray.lid;
-    deps.open(result.layer.id, { addKeys: true });
+    deps.open(result.source.id, { addKeys: true, layer: result.layerIndex });
     requestPersistentStorage(deps.store);
-    toast(`Created ${quoted(result.layer.name)}.${lidMoved ? ' The lid moved to this layer.' : ''}`, {
+    toast(`Created ${quoted(result.layer.name)}.${hasLid ? ' The lid stays on top.' : ''}`, {
       // Add keys opens on the new layer: once keys were added, Ctrl/Cmd+Z must not undo the whole layer.
       action: { label: 'Undo', run: () => undoMatchingLayer(result, deps), shortcut: () => layerUntouched(result, deps) },
     });
@@ -193,52 +195,25 @@ export function openMatchingLayerDialog(sourceId: string, deps: ProjectActionsDe
   nameInput.select();
 }
 
-/** The layer is live and unchanged since it was created (no config edit, rename or pending edit). */
+/** Undo is offered only while no later edit would be lost. */
 function layerUntouched(result: MatchingLayerResult, deps: ProjectActionsDeps): boolean {
-  const open = deps.session();
-  if (open?.id === result.layer.id && open.pending) return false;
-  let stored: ProjectRecord | undefined;
-  try { stored = getProject(deps.store.local, result.layer.id); } catch { return false; }
-  return !!stored && !stored.deletedAt && stored.rev === result.layer.rev && stored.name === result.layer.name;
+  if (deps.session()?.id === result.source.id && deps.session()?.pending) return false;
+  try {
+    const stored = getProject(deps.store.local, result.source.id);
+    return !!stored && !stored.deletedAt && stored.rev === result.source.rev;
+  } catch { return false; }
 }
 
-/**
- * Reverts the source (only if it is unchanged since the layer was created) and opens it again.
- * An untouched layer is removed for good; a layer the user already changed goes to Recently deleted.
- * Exported for tests.
- */
 export function undoMatchingLayer(result: MatchingLayerResult, deps: ProjectActionsDeps): void {
-  const store = deps.store.local;
-  const open = deps.session();
-  if (open?.id === result.layer.id || open?.id === result.source.id) open!.flush();
-  try { updateProjectConfig(store, result.source.id, result.previousSourceConfig, { baseRev: result.source.rev }); } catch (error) {
+  if (deps.session()?.id === result.source.id && !deps.session()!.flush()) return;
+  try {
+    updateProjectConfig(deps.store.local, result.source.id, result.previousSourceConfig, { baseRev: result.source.rev });
+  } catch (error) {
     toast(error instanceof ProjectStoreError && error.code === 'conflict'
-      ? `${quoted(result.source.name)} changed after the layer was created, so Undo was skipped.` : messageOf(error));
+      ? 'The tray set changed after the layer was added, so Undo was skipped.' : messageOf(error));
     return;
   }
-  const untouched = layerUntouched(result, deps);
-  let deleteError: unknown;
-  // removeProject also works when storage is too full for a tombstone.
-  if (untouched) { try { removeProject(store, result.layer.id); } catch { /* gone or unreadable: keep it */ } }
-  else { try { deleteProject(store, result.layer.id); } catch (error) { deleteError = error; } }
   deps.open(result.source.id);
-  let kept = false;
-  if (!untouched) { try { kept = !!getProject(store, result.layer.id)?.deletedAt; } catch { /* unreadable */ } }
-  // Storage full: the changed layer stays in Projects, so say why.
-  if (!kept && deleteError instanceof ProjectStoreError && deleteError.code === 'quota') {
-    toast(`Browser storage is full, so ${quoted(result.layer.name)} couldn't be moved to Recently deleted. It's still in Projects.`);
-  }
-  if (kept) {
-    toast(`Moved ${quoted(result.layer.name)} to Recently deleted.`, {
-      action: {
-        label: 'Restore',
-        run: () => {
-          try { restoreProject(store, result.layer.id); } catch (error) { toast(messageOf(error)); return; }
-          deps.open(result.layer.id);
-        },
-      },
-    });
-  }
 }
 
 /* ───────────── Duplicate, delete, save file ───────────── */

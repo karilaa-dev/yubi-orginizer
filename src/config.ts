@@ -1,4 +1,5 @@
 import type { HolderConfig, KeyType, Slot, TemplateId } from './types';
+import { normalizeProjectLid } from './tray-lid';
 
 export const KEY_TYPES: KeyType[] = ['A', 'C', 'AN', 'CN', 'CK', 'CI'];
 export const KEY_CATALOG: Record<KeyType, { name: string; short: string; connector: string }> = {
@@ -17,6 +18,7 @@ export const TEMPLATES: { id: TemplateId; name: string; description: string; ico
 // open as inventory trays instead of making the whole project list unreadable.
 const RETIRED_TEMPLATES = ['modular_rail', 'grid_organizer', 'travel_case', 'key_fit_tester', 'interface_tests'];
 export const MAX_SLOTS = 48;
+export const MAX_LAYERS = 16;
 /** Front text (tray front edge, dock front) size: percent of the largest text that fits the wall.
  * Projects saved without it keep the original size (3.1 mm, smaller only when it doesn't fit). */
 export const FRONT_TEXT_PERCENT = { min: 20, max: 100, tray: 50, dock: 30 } as const;
@@ -59,8 +61,19 @@ export function validateText(value: unknown, name: string, max: number): string 
   if (!/^[\u0020-\u024f\u0370-\u052f]*$/u.test(value)) throw new Error(`${name} supports Latin, Greek, and Cyrillic letters, numbers, and punctuation.`);
   return value;
 }
-export function validateConfig(value: unknown): HolderConfig {
+export function validateConfig(value: unknown, nested = false): HolderConfig {
   const c = object(value, 'Project');
+  if (nested && (c.layers !== undefined || c.layerName !== undefined || c.traySet !== undefined)) throw new Error('Layers cannot contain another tray set.');
+  // The earlier Keyform prototype stored the entire set beside its active config.
+  if (c.traySet !== undefined) {
+    const set = object(c.traySet, 'Tray set');
+    if (!Array.isArray(set.layers) || !set.layers.length || set.layers.length > MAX_LAYERS) throw new Error(`A project must contain 1–${MAX_LAYERS} layers.`);
+    const layers = set.layers.map(value => {
+      const layer = object(value, 'Layer');
+      return { name: layer.name, config: validateConfig(layer.config, true) };
+    });
+    return validateConfig({ ...layers[0].config, layerName: layers[0].name, layers: layers.slice(1) });
+  }
   if (c.version !== 1) throw new Error('This project version is not supported. Expected version 1.');
   const o = object(c.options, 'Options');
   const d = object(o.dock, 'Dock options');
@@ -84,12 +97,27 @@ export function validateConfig(value: unknown): HolderConfig {
     const s = object(v, `Key ${i + 1}`);
     if (typeof s.id !== 'string' || !/^[\w-]{1,80}$/.test(s.id) || ids.has(s.id)) throw new Error('Key IDs must be unique, non-empty letters, numbers, or hyphens.');
     ids.add(s.id);
-    return { id: s.id, type: choice(s.type, KEY_TYPES, 'Key type'), label: validateText(s.label, 'Key label', 18), occupied: bool(s.occupied, 'Key visibility') };
+    if (s.rotation !== undefined && s.rotation !== 0 && s.rotation !== 90) throw new Error('Key rotation must be 0 or 90 degrees.');
+    return { id: s.id, type: choice(s.type, KEY_TYPES, 'Key type'), label: validateText(s.label, 'Key label', 18), occupied: bool(s.occupied, 'Key visibility'),
+      ...(s.rotation !== undefined ? { rotation: s.rotation as 0 | 90 } : {}) };
   });
-  return {
+  if (c.layers !== undefined && (!Array.isArray(c.layers) || c.layers.length >= MAX_LAYERS)) throw new Error(`A project may contain up to ${MAX_LAYERS} layers.`);
+  const layerName = (value: unknown): string => {
+    if (typeof value !== 'string' || !value.trim() || value.length > 80 || /[\u0000-\u001f\u007f]/.test(value)) throw new Error('Enter a layer name with 1–80 characters.');
+    return value.trim();
+  };
+  const layers = (c.layers as unknown[] | undefined)?.map(value => {
+    const layer = object(value, 'Layer');
+    const config = validateConfig(layer.config, true);
+    if (template !== 'inventory_tray' || config.template !== 'inventory_tray') throw new Error('Multiple layers are only available for inventory trays.');
+    return { name: layerName(layer.name), config };
+  });
+  const validated: HolderConfig = {
     version: 1,
     template: choice(template, TEMPLATES.map(t => t.id), 'Template'), slots, labels: bool(c.labels, 'Labels'),
     labelSize: number(c.labelSize === undefined ? 2.7 : c.labelSize, 'Key label size', 1.5, 4),
+    ...(c.layerName !== undefined ? { layerName: layerName(c.layerName) } : {}),
+    ...(layers?.length ? { layers } : {}),
     options: {
       dock: {
         columns: number(d.columns, 'Dock columns', 0, 6, true), spacing: number(d.spacing, 'Dock spacing', 22, 40),
@@ -100,6 +128,7 @@ export function validateConfig(value: unknown): HolderConfig {
         ...(d.titlePercent !== undefined ? { titlePercent: number(d.titlePercent, 'Dock title percentage', FRONT_TEXT_PERCENT.min, FRONT_TEXT_PERCENT.max) } : {}),
       },
       tray: {
+        ...(t.arrangement !== undefined ? { arrangement: choice(t.arrangement, ['compact'] as const, 'Tray arrangement') } : {}),
         columns: number(t.columns, 'Tray columns', 0, 6, true), spacing: number(t.spacing, 'Tray spacing', 24, 42),
         rowGap: number(t.rowGap === undefined ? 4 : t.rowGap, 'Space between tray rows', 2, 40),
         margin: number(t.margin, 'Tray margin', 5, 20), height: number(t.height === undefined ? 8.6 : t.height, 'Tray height', 8.6, 20),
@@ -122,9 +151,10 @@ export function validateConfig(value: unknown): HolderConfig {
       },
     },
   };
+  return normalizeProjectLid(validated);
 }
 export function parseConfig(text: string): HolderConfig {
-  if (text.length > 256_000) throw new Error('This file is too large for an organizer configuration.');
+  if (text.length > 1_000_000) throw new Error('This file is too large for an organizer configuration.');
   let value: unknown;
   try { value = JSON.parse(text); } catch { throw new Error('This file is not valid JSON. Choose an exported organizer project.'); }
   return validateConfig(value);

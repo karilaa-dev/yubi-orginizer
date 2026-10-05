@@ -6,6 +6,7 @@ import type { PartSpec, ProjectGeometry } from './types';
 export const THREE_MF_PRINT_SETTINGS = Object.freeze({
   sparse_infill_density: '5%',
   wall_generator: 'arachne',
+  brim_type: 'outer_only',
 });
 
 interface IndexedMesh {
@@ -91,6 +92,8 @@ export function build3mf(project: ProjectGeometry, meshes: Map<string, ArrayBuff
   const items: string[] = [];
   const objects: string[] = [];
   const settings: string[] = [];
+  const objectSettings = Object.entries(THREE_MF_PRINT_SETTINGS)
+    .map(([key, value]) => `<metadata key="${xml(key)}" value="${xml(value)}"/>`).join('');
   indexed.forEach((mesh, index) => {
     if (cursorX > 0 && cursorX + widths[index] > targetWidth) {
       cursorX = 0;
@@ -107,14 +110,13 @@ export function build3mf(project: ProjectGeometry, meshes: Map<string, ArrayBuff
     // Bambu skips foreign applications' global project settings. Its importer
     // still applies these object overrides, as verified by a native roundtrip.
     // This preserves the user's printer/material selection in the slicer.
-    settings.push(`<object id="${id}"><metadata key="name" value="${xml(mesh.part.name)}"/><metadata key="sparse_infill_density" value="5%"/><metadata key="wall_generator" value="arachne"/><part id="${id}" subtype="normal_part"><metadata key="name" value="${xml(mesh.part.name)}"/></part></object>`);
+    settings.push(`<object id="${id}"><metadata key="name" value="${xml(mesh.part.name)}"/>${objectSettings}<part id="${id}" subtype="normal_part"><metadata key="name" value="${xml(mesh.part.name)}"/></part></object>`);
   });
   const title = options.title?.trim() || 'YubiKey organizer';
   const files = {
     '[Content_Types].xml': strToU8('<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/><Default Extension="config" ContentType="application/octet-stream"/></Types>'),
     '_rels/.rels': strToU8('<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>'),
-    '3D/3dmodel.model': strToU8(`<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><metadata name="Application">yubi-orginizer</metadata><metadata name="Title">${xml(title)}</metadata><metadata name="Description">Printable parts with 5% infill and Arachne object overrides for Bambu Studio and OrcaSlicer. Choose your printer and filament in the slicer.</metadata><resources>${objects.join('')}</resources><build>${items.join('')}</build></model>`),
-    'Metadata/project_settings.config': strToU8(JSON.stringify(THREE_MF_PRINT_SETTINGS, null, 2)),
+    '3D/3dmodel.model': strToU8(`<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><metadata name="Application">yubi-orginizer</metadata><metadata name="Title">${xml(title)}</metadata><metadata name="Description">Printable parts with per-object 5% infill, Arachne walls and outer brim for Bambu Studio and OrcaSlicer. Choose your printer and filament in the slicer.</metadata><resources>${objects.join('')}</resources><build>${items.join('')}</build></model>`),
     'Metadata/model_settings.config': strToU8(`<?xml version="1.0" encoding="UTF-8"?><config>${settings.join('')}</config>`),
   };
   return zipSync(files, { level: 6, mtime: new Date(1980, 0, 1) });

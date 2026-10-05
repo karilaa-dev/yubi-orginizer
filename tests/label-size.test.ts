@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { defaultConfig, KEY_TYPES } from '../src/config';
-import { buildProject, inventoryTrayLayout, inventoryTraySupports, keyDimensions, keyLabelMetrics } from '../src/geometry';
+import { buildProject, inventoryTrayLayout, inventoryTraySupports, trayPocketRearExtent, keyLabelMetrics } from '../src/geometry';
 import type { HolderConfig } from '../src/types';
 
 function example(): HolderConfig {
@@ -45,7 +45,7 @@ describe('adjustable printed key labels', () => {
     for (const [px, py] of inventoryTraySupports(config, t)) {
       config.slots.forEach((slot, i) => {
         const [x, y] = t.xy[i];
-        const labelY = y - keyDimensions[slot.type].pocketLength / 2 - metrics.edgeOffset;
+        const labelY = y - trayPocketRearExtent(slot.type) - metrics.edgeOffset;
         const distance = Math.hypot(Math.max(0, Math.abs(px - x) - t.labelWidth / 2), Math.max(0, Math.abs(py - labelY) - metrics.halfHeight));
         expect(distance).toBeGreaterThanOrEqual(2.099);
       });

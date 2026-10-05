@@ -56,7 +56,7 @@ export interface OverlayModel { text: string; icon: string; actions: OverlayActi
 /** The centred card on the preview, or undefined when the model itself is the content. */
 export function previewOverlay(
   state: PreviewState,
-  detail: { errors?: number; required?: { width: number; depth: number }; grow?: { width: number; depth: number }; message?: string } = {},
+  detail: { errors?: number; required?: { width: number; depth: number }; grow?: { width: number; depth: number }; message?: string; cancellable?: boolean } = {},
 ): OverlayModel | undefined {
   switch (state) {
     case 'empty':
@@ -68,8 +68,8 @@ export function previewOverlay(
     case 'too-small': {
       const mm = (s?: { width: number; depth: number }): string => (s ? `${fmt(s.width)} × ${fmt(s.depth)} mm` : '');
       return {
-        icon: 'alert', tone: 'error', text: `Too small. These keys need at least ${mm(detail.required)}.`,
-        actions: [{ label: `Use ${mm(detail.grow ?? detail.required)}`, action: 'grow-footprint', primary: true }, { label: 'Fit to keys', action: 'auto-footprint' }],
+        icon: 'alert', tone: 'error', text: `This change needs at least ${mm(detail.required)}. Resize every tray to fit?`,
+        actions: [{ label: `Use ${mm(detail.grow ?? detail.required)}`, action: 'grow-footprint', primary: true }, ...(detail.cancellable ? [{ label: 'Cancel', action: 'cancel-resize' }] : [])],
       };
     }
     case 'paused':
@@ -160,14 +160,4 @@ export function preparingLabel(progress: { index: number; total: number }): stri
 export function formatNote(format: DownloadFormat, zip: boolean): string {
   if (format === '3mf') return 'Open as a project in your slicer to keep these settings.';
   return zip ? 'Several parts download as one ZIP.' : '';
-}
-
-/** One-line material tip for trays ('' for none). */
-export function printTip(config: HolderConfig): string {
-  if (config.template !== 'inventory_tray') return '';
-  const tray = config.options.tray;
-  if (tray.connection === 'h20_slide_v7') return 'Use the same material as your H20 reference. Pins up, lid flat side down, no supports in the receivers.';
-  if (tray.connection === 'snap_fit') return 'Print in PLA or PLA Matte and keep the perimeter channels clear.';
-  if (tray.retention) return 'Print in PETG so the retention tabs can flex.';
-  return '';
 }

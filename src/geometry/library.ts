@@ -4,7 +4,7 @@ import type { KeyType } from '../types';
 import { ciTouchScad } from './ci-touch';
 import { TRAY_SNAP, traySnapScad } from './tray-snap';
 import { trayH20Scad } from './tray-h20';
-import { cNanoSupportScad } from './c-nano-support';
+import { CN_FLAT_PRY, cNanoSupportScad } from './c-nano-support';
 import { trayLidScad } from './tray-lid';
 import { TRAY_STACK } from './tray-stack';
 export { TRAY_STACK } from './tray-stack';
@@ -27,6 +27,8 @@ export const TRAY_FLEX = { length: 12, rootThickness: 1, tipThickness: 0.8, root
 export const TRAY_STACK_PILLAR = { diameter: 3, clearance: 0.6, minSeparation: 90, spanPerSupport: 180, maxCount: 6 } as const;
 export const TRAY_LID = { thickness: 2.4, engravingDepth: 0.35, notchDepth: 0.8, notchHeight: 1.2, notchRadius: 4, textInset: 6, textVerticalBudget: 1.7 } as const;
 export const KEY_LABEL_LAYOUT = { baseSize: 2.7, baseHalfHeight: 2.2, baseEdgeOffset: 3 } as const;
+/** The selected C Nano 7B pocket has a fixed finger opening and no flex tabs. */
+export const trayRetainsKey = (type: KeyType) => type !== 'CN';
 /** Front-wall text: width budget per character, free width at the sides and free height above and below. */
 /** Front-wall text: width budget per character, free width at the sides, free height above and below,
  * and the size of projects saved before the size setting (3.1 mm unless it doesn't fit). */
@@ -63,7 +65,7 @@ function pocket_d(k)=key_t(k)-0.4;
 function socket_d(k)=k=="A"?8.5:k=="AN"?5:k=="CN"?4.2:6.6;
 function key_label_edge_offset(label_scale=1)=${KEY_LABEL_LAYOUT.baseEdgeOffset}+${KEY_LABEL_LAYOUT.baseHalfHeight}*(label_scale-1);
 function upright_label_distance(k,label_scale=1)=max(2,key_t(k)/2)+key_label_edge_offset(label_scale);
-function flat_label_distance(k,label_scale=1)=pocket_l(k)/2+key_label_edge_offset(label_scale);
+function flat_label_distance(k,label_scale=1)=(k=="CN"?${CN_FLAT_PRY.rearExtent}:pocket_l(k)/2)+key_label_edge_offset(label_scale);
 retention_data=${JSON.stringify(retentionData)};
 function retention_spec(k)=retention_data[k=="A"?0:k=="C"?1:k=="AN"?2:k=="CN"?3:k=="CK"?4:5];
 function tray_stack_gap(retention=true)=retention?${TRAY_STACK.gap}:${TRAY_STACK.compactGap};
@@ -92,16 +94,18 @@ module socket_cut(k,top) {
     }
   }
 }
-module body_cut(k,top) {
+// Experiments may request only the calibrated seat; production uses the full pocket.
+module body_cut(k,top,pry=true) {
   difference() {
     translate([0,-pocket_l(k)/2,top-pocket_d(k)])
       linear_extrude(pocket_d(k)+0.15) polygon(body_pts(k));
     if(k=="CN") cn_flat_support(top);
   }
+  if(k=="CN" && pry) cn_flat_pry_relief(top);
 }
 module scoop(k,top,r=5) {
-  translate([0,pocket_l(k)/2,top-2.5]) cylinder(r=r,h=2.65);
-  if(k=="CN") cn_connector_grip(top,r);
+  if(k=="CN") cn_connector_grip(top);
+  else translate([0,pocket_l(k)/2,top-2.5]) cylinder(r=r,h=2.65);
 }
 // Conservative width budgets measured with the bundled Liberation Sans Bold
 // renderer across all accepted code points. Broad ASCII glyphs and extended
@@ -132,16 +136,17 @@ module dock(ks,ls,xy,w,d,h,title="",label_scale=1,title_percent=undef) {
   }
 }
 // Shared inventory-tray base: slab, calibrated pockets, finger scoops, labels.
-module tray(ks,ls,xy,w,d,h=8.6,scoop_r=5,label_width=23,label_scale=1) {
+module tray_slot(xy,i,rotations=[]) { translate([xy[i][0],xy[i][1],0]) rotate([0,0,is_undef(rotations[i])?0:rotations[i]]) children(); }
+module tray(ks,ls,xy,w,d,h=8.6,scoop_r=5,label_width=23,label_scale=1,rotations=[]) {
   union() {
     difference() {
       slab(w,d,h,4);
-      for(i=[0:len(ks)-1]) translate([xy[i][0],xy[i][1],0]) {
+      if(len(ks)>0) for(i=[0:len(ks)-1]) tray_slot(xy,i,rotations) {
         body_cut(ks[i],h);
         scoop(ks[i],h,scoop_r);
       }
     }
-    for(i=[0:len(ks)-1]) label(ls[i],xy[i][0],xy[i][1]-flat_label_distance(ks[i],label_scale),h,label_width,2.7*label_scale);
+    if(len(ks)>0) for(i=[0:len(ks)-1]) tray_slot(xy,i,rotations) label(ls[i],0,-flat_label_distance(ks[i],label_scale),h,label_width,2.7*label_scale);
   }
 }
 // Long cantilevers bend in the XY layer plane. Both sides are relieved through
@@ -159,11 +164,14 @@ module tray_retention_relief_2d() {
   }
 }
 module tray_retention_relief(k,h) {
+  if(k!="CN") {
   s=retention_spec(k); start=s[0]-s[3]/2-pocket_l(k)/2;
   for(side=[-1,1]) tray_retainer_side(side) translate([s[1],start,-eps])
     linear_extrude(h+2*eps) tray_retention_relief_2d();
+  }
 }
 module tray_retention_lips(k,h) {
+  if(k!="CN") {
   s=retention_spec(k); y=s[0]-pocket_l(k)/2; edge=s[1]; body=s[2]; width=s[3];
   // The free end stays unstressed when seated. Sloped lead-in/withdrawal faces
   // capture the body only during lifting. A common low tip keeps stacking
@@ -172,6 +180,7 @@ module tray_retention_lips(k,h) {
   for(side=[-1,1]) tray_retainer_side(side) translate([0,y+width/2,h]) rotate([90,0,0]) linear_extrude(width)
     polygon([[edge+1.3,-eps],[edge+0.5,-eps],[edge+0.5,0.05],
       [body-0.2,0.75],[body-0.2,1.25],[edge+1.3,0.55]]);
+  }
 }
 module tray_ring_2d(w,d,outer_inset,inner_inset) {
   difference() {
@@ -214,17 +223,17 @@ module tray_stack_pillars(points,h,gap=${TRAY_STACK.gap}) {
   for(p=points) translate([p[0],p[1],h-eps])
     cylinder(d=${TRAY_STACK_PILLAR.diameter},h=gap+eps,$fn=48);
 }
-module inventory_tray(ks,ls,xy,w,d,h=8.6,scoop_r=6,label_width=23,retention=true,stackable=false,side_text="",support_xy=[],label_scale=1,has_lid=false,side_text_percent=undef) {
+module inventory_tray(ks,ls,xy,w,d,h=8.6,scoop_r=6,label_width=23,retention=true,stackable=false,side_text="",support_xy=[],label_scale=1,has_lid=false,side_text_percent=undef,rotations=[]) {
   gap=tray_stack_gap(retention);
   union() {
     difference() {
-      tray(ks,ls,xy,w,d,h,scoop_r,label_width,label_scale);
-      for(i=[0:len(ks)-1]) if(ks[i]=="CI") translate([xy[i][0],xy[i][1],0]) ci_inventory_reversible_cut(h);
-      if(retention) for(i=[0:len(ks)-1]) translate([xy[i][0],xy[i][1],0]) tray_retention_relief(ks[i],h);
+      tray(ks,ls,xy,w,d,h,scoop_r,label_width,label_scale,rotations);
+      if(len(ks)>0) for(i=[0:len(ks)-1]) if(ks[i]=="CI") tray_slot(xy,i,rotations) ci_inventory_reversible_cut(h);
+      if(retention && len(ks)>0) for(i=[0:len(ks)-1]) tray_slot(xy,i,rotations) tray_retention_relief(ks[i],h);
       if(stackable) tray_stack_sockets(w,d);
       front_title_cut(side_text,w,d,h,side_text_percent);
     }
-    if(retention) for(i=[0:len(ks)-1]) translate([xy[i][0],xy[i][1],0]) tray_retention_lips(ks[i],h);
+    if(retention && len(ks)>0) for(i=[0:len(ks)-1]) tray_slot(xy,i,rotations) tray_retention_lips(ks[i],h);
     if(stackable||has_lid) {
       tray_stack_supports(w,d,h,true,gap);
       tray_stack_pillars(support_xy,h,gap);
@@ -233,11 +242,11 @@ module inventory_tray(ks,ls,xy,w,d,h=8.6,scoop_r=6,label_width=23,retention=true
 }
 // This actuator belongs to the lower tray. Its well opens upward, while
 // the next tray or lid has only narrow, sloped passive receivers underneath.
-module inventory_tray_snap(ks,ls,xy,w,d,h=${TRAY_SNAP.minimumHeight},scoop_r=6,label_width=23,retention=true,stackable=true,side_text="",support_xy=[],label_scale=1,has_lid=false,side_text_percent=undef) {
+module inventory_tray_snap(ks,ls,xy,w,d,h=${TRAY_SNAP.minimumHeight},scoop_r=6,label_width=23,retention=true,stackable=true,side_text="",support_xy=[],label_scale=1,has_lid=false,side_text_percent=undef,rotations=[]) {
   gap=tray_stack_gap(retention);
   union() {
     difference() {
-      inventory_tray(ks,ls,xy,w,d,h,scoop_r,label_width,retention,false,side_text,[],label_scale,false,side_text_percent);
+      inventory_tray(ks,ls,xy,w,d,h,scoop_r,label_width,retention,false,side_text,[],label_scale,false,side_text_percent,rotations);
       tray_snap_sockets(w,d);
       tray_snap_body_relief(w,d,h,gap);
       tray_snap_pry_notches(w,d);

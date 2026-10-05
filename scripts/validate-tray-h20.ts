@@ -180,15 +180,15 @@ async function bezelGeometry() {
 }
 async function cNanoGripGeometry() {
   const zero: { name: string; source: string }[] = [];
-  // All flat-cradle scoop sizes.
+  // C Nano 7B stays fixed across saved scoop sizes and retention settings.
   for (const r of [4,5,6,7]) for (const retention of [false,true]) {
     const name = `CN-access/r${r}/${retention}`;
     const tray = `inventory_tray(["CN"],[""],[[0,0]],40,36,8.6,${r},23,${retention});`;
     zero.push({ name: `${name}/supported-root`, source: `difference(){translate([-2,-.5,4.1])cube([4,1,.15]);${tray}}` });
     zero.push({ name: `${name}/clear-under-tip`, source: `intersection(){${tray}translate([-3,3,3.4])cube([6,1.5,.8]);}` });
     zero.push({ name: `${name}/front-finger-access`, source: `intersection(){${tray}translate([-3,5.5,3.4])cube([6,1.5,5.3]);}` });
-    zero.push({ name: `${name}/solid-floor`, source: `difference(){translate([-3,3,3.1])cube([6,4,.15]);${tray}}` });
-    zero.push({ name: `${name}/no-cut-into-retainers`, source: `intersection(){cn_connector_grip(8.6,${r});for(side=[-1,1])translate([side<0?-10:6.35,-10,0])cube([3.65,30,10]);}` });
+    zero.push({ name: `${name}/solid-floor`, source: `difference(){translate([-3,3,1.85])cube([6,4,.1]);${tray}}` });
+    zero.push({ name: `${name}/tab-free-pry-opening`, source: `intersection(){${tray}translate([-10,-10,8.61])cube([20,25,2]);}` });
   }
   await emptyChecks(zero);
   console.log('C Nano grip and root support passed', zero.length, 'checks');

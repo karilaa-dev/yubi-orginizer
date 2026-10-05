@@ -5,11 +5,14 @@
  */
 import './shared.css';
 import './projects-view.css';
+import { projectThumbnail } from './organizer-thumbnail';
+export { projectThumbnail } from './organizer-thumbnail';
+import { projectKeyCount, projectLayers } from '../layers';
 import { defaultConfig, TEMPLATES } from '../config';
 import { strFromU8, unzipSync, type Unzipped } from 'fflate';
 import { downloadFile, projectsArchive, projectsArchiveName } from '../export';
-import { inventoryTrayLayout, keyDimensions } from '../geometry';
-import { icon, keyIcon } from '../icons';
+import { traySetLayout } from '../geometry/layers';
+import { icon } from '../icons';
 import {
   createProject, deleteProjectForever, importProject, listProjects, PROJECT_KEY_PREFIX, renameProject, restoreProject,
   type ProjectList, type ProjectRecord, type ProjectStorage,
@@ -36,14 +39,12 @@ export interface ProjectsView {
   render(): void;
 }
 
-const MAX_IMPORT_BYTES = 256_000;
+const MAX_IMPORT_BYTES = 1_000_000;
 /** Export all (.zip) backups: compressed size and number of project files. */
 const MAX_ARCHIVE_BYTES = 16_000_000;
 const MAX_ARCHIVE_FILES = 500;
 const ZIP_MAGIC = [0x50, 0x4b, 0x03, 0x04];
 const SEARCH_THRESHOLD = 8;
-const DOCK_GLYPHS = 10;
-const SLOT_WIDTH = 18.6;
 const RAW_DATA_FILE = 'yubi-orginizer-unreadable-data.json';
 
 const quoted = (text: string): string => `“${text}”`;
@@ -57,50 +58,21 @@ const slideArrow = (direction: TraySlideDirection): string =>
 /** Card meta line and chips. Trays: "Inventory tray · 6 keys · 118 × 96 mm" (size with keys or a fixed size); docks: "Desktop dock · 4 keys". */
 export function projectCardInfo(record: ProjectRecord): { meta: string; chips: string[] } {
   const config = record.config;
-  const keys = plural(config.slots.length, 'key');
+  const keys = plural(projectKeyCount(config), 'key');
   if (config.template !== 'inventory_tray') return { meta: `${templateName(config.template)} · ${keys}`, chips: [] };
   const tray = config.options.tray;
-  const meta = [templateName(config.template), keys];
-  if (config.slots.length > 0 || tray.footprint) {
-    const layout = inventoryTrayLayout(config);
+  const meta = [templateName(config.template), ...(config.layers?.length ? [plural(config.layers.length + 1, 'layer')] : []), keys];
+  if (projectKeyCount(config) > 0 || tray.footprint) {
+    const layout = traySetLayout(config);
     meta.push(`${fmt(layout.width)} × ${fmt(layout.depth)} mm`);
   }
   const chips: string[] = [];
   if (tray.connection === 'stackable') chips.push('Stackable');
   if (tray.connection === 'h20_slide_v7') chips.push(`Slide-lock ${slideArrow(tray.slideDirection)}`);
   if (tray.connection === 'snap_fit') chips.push('Snap-fit');
-  if (tray.lid) chips.push('Lid');
+  if (projectLayers(config).some(l => l.config.options.tray.lid)) chips.push('Lid');
   if (tray.footprint) chips.push('Fixed size');
   return { meta: meta.join(' · '), chips };
-}
-
-function emptyThumbnail(kind: 'tray' | 'dock', size = { width: 96, depth: 64 }): string {
-  const { width: w, depth: d } = size;
-  return `<span class="thumb-empty"><svg class="thumb" viewBox="${fmt(-w / 2 - 2)} ${fmt(-d / 2 - 2)} ${fmt(w + 4)} ${fmt(d + 4)}" aria-hidden="true" focusable="false">`
-    + `<rect class="thumb-footprint is-empty" x="${fmt(-w / 2)}" y="${fmt(-d / 2)}" width="${fmt(w)}" height="${fmt(d)}" rx="3"/></svg>${icon(kind)}</span>`;
-}
-
-/**
- * Schematic thumbnail drawn from the config (no raster, no storage).
- * Trays: footprint plus one rect per slot (hidden-in-preview slots dashed). Docks: up to 10 key glyphs, then "+N".
- */
-export function projectThumbnail(config: HolderConfig): string {
-  if (config.template === 'desktop_dock') {
-    if (!config.slots.length) return emptyThumbnail('dock');
-    const extra = config.slots.length - DOCK_GLYPHS;
-    return `<span class="thumb-dock">${config.slots.slice(0, DOCK_GLYPHS).map(s => keyIcon(s.type)).join('')}`
-      + `${extra > 0 ? `<span class="thumb-more">+${extra}</span>` : ''}</span>`;
-  }
-  if (!config.slots.length) return emptyThumbnail('tray', config.options.tray.footprint ?? undefined);
-  const layout = inventoryTrayLayout(config);
-  const w = layout.width, d = layout.depth;
-  const slots = config.slots.map((slot, i) => {
-    const [x, y] = layout.xy[i];
-    const h = keyDimensions[slot.type].pocketLength;
-    return `<rect class="thumb-slot${slot.occupied ? '' : ' is-hidden'}" x="${fmt(x - SLOT_WIDTH / 2)}" y="${fmt(-y - h / 2)}" width="${SLOT_WIDTH}" height="${fmt(h)}" rx="1.5"/>`;
-  }).join('');
-  return `<svg class="thumb thumb-tray" viewBox="${fmt(-w / 2 - 2)} ${fmt(-d / 2 - 2)} ${fmt(w + 4)} ${fmt(d + 4)}" aria-hidden="true" focusable="false">`
-    + `<rect class="thumb-footprint" x="${fmt(-w / 2)}" y="${fmt(-d / 2)}" width="${fmt(w)}" height="${fmt(d)}" rx="3"/>${slots}</svg>`;
 }
 
 /** No live projects, nothing in Recently deleted and nothing unreadable. */
@@ -165,7 +137,7 @@ export async function importProjectFiles(storage: ProjectStorage, files: readonl
       if (skipped) result.failed.push({ file: file.name, message: `Only the first ${MAX_ARCHIVE_FILES} project files can be imported at once.` });
       continue;
     }
-    if (file.size > MAX_IMPORT_BYTES) { result.failed.push({ file: file.name, message: 'Choose a project file smaller than 256 KB.' }); continue; }
+    if (file.size > MAX_IMPORT_BYTES) { result.failed.push({ file: file.name, message: 'Choose a project file smaller than 1 MB.' }); continue; }
     let text: string;
     try { text = await file.text(); } catch (error) { result.failed.push({ file: file.name, message: messageOf(error) }); continue; }
     add(text, file.name);
@@ -229,7 +201,7 @@ export function createProjectsView(root: HTMLElement, deps: ProjectsViewDeps): P
         <span class="card-meta">${esc(meta)}</span></div></li>`;
     }
     const edited = relativeTime(record.updatedAt, now);
-    const label = `Open ${record.name}, ${templateName(record.config.template)}, ${plural(record.config.slots.length, 'key')}, edited ${edited}`;
+    const label = `Open ${record.name}, ${templateName(record.config.template)}, ${plural(projectKeyCount(record.config), 'key')}, edited ${edited}`;
     return `<li class="project-card${highlight ? ' is-new' : ''}" data-project="${record.id}">
       <button type="button" class="card-open" data-open="${record.id}" aria-label="${esc(label)}">${thumb}
         <span class="card-name">${esc(record.name)}</span>

@@ -1,14 +1,30 @@
 /**
  * Download dialog (#download-dialog) and Add keys dialog (#key-dialog) markup. The editor fills
- * in parts, tips and labels from the pure helpers in editor-status.ts.
+ * in parts and labels from the pure helpers in editor-status.ts.
  */
 import { icon } from '../icons';
 import { dialogHeading } from './app-dialogs';
 import { DOCK_NOTICE } from './editor-settings';
+import { traySetItems } from '../geometry/layers';
+import type { HolderConfig } from '../types';
+import { esc, plural } from './dom';
+import { projectThumbnail, lidThumbnail } from './organizer-thumbnail';
+
+export function downloadLayersMarkup(config: HolderConfig): string {
+  if (config.template !== 'inventory_tray') return '';
+  const items = traySetItems(config).reverse();
+  return `<details class="download-layers">
+    <summary>${icon('down')}<span>Layers to download</span><span id="download-layer-count">All ${items.length} selected</span></summary>
+    <div class="download-layer-list">${items.map(item => `<label class="download-layer-row">
+      <input type="checkbox" data-download-part="${item.id}" checked aria-label="Download ${esc(item.name)}"/>
+      <span class="layer-thumbnail" aria-hidden="true">${item.kind === 'lid' ? lidThumbnail(item.config) : projectThumbnail(item.config)}</span>
+      <span class="layer-copy"><strong>${esc(item.name)}</strong><small>${item.kind === 'lid' ? 'Lid' : plural(item.config.slots.length, 'key')}</small></span>
+    </label>`).join('')}</div></details>`;
+}
 
 const FORMATS = [
-  { value: '3mf', title: 'Print project', description: 'Settings included for Bambu Studio and OrcaSlicer' },
-  { value: 'stl', title: '3D model', description: 'Set infill and walls in your slicer' },
+  { value: '3mf', title: 'Print project', description: 'Per-object settings for Bambu Studio and OrcaSlicer' },
+  { value: 'stl', title: '3D model', description: 'Set infill, walls and brim in your slicer' },
   { value: 'scad', title: 'Editable source', description: 'Open and customize in OpenSCAD' },
 ] as const;
 
@@ -21,12 +37,18 @@ export function downloadDialogMarkup(): string {
   return `<dialog id="download-dialog" class="dialog download-dialog" aria-labelledby="download-title">
     ${dialogHeading('download-title', 'Download')}
     <div class="dialog-body">
-      <p class="chip-row"><span class="chip">Recommended: 100% scale · 5% infill · Arachne walls</span></p>
-      <label class="field" id="download-part-field" for="download-part" hidden>Parts<select id="download-part"></select></label>
+      <section class="print-settings" aria-labelledby="print-settings-title">
+        <h3 id="print-settings-title">Recommended print settings</h3>
+        <dl>
+          <div><dt>Scale</dt><dd>100%</dd></div>
+          <div><dt>Sparse infill</dt><dd>5%</dd></div>
+          <div><dt>Wall generator</dt><dd>Arachne</dd></div>
+          <div><dt>Brim type</dt><dd>Outer brim</dd></div>
+        </dl>
+      </section>
+      <div id="download-layers"></div>
       <fieldset class="format-options"><legend class="sr-only">File format</legend>${formats}</fieldset>
-      <p id="tray-print-tip" class="callout" hidden></p>
       <p id="dock-print-tip" class="callout warn" hidden>${icon('alert')}<span>${DOCK_NOTICE}</span></p>
-      <details id="assembly-notes" class="assembly-notes" hidden><summary>${icon('down')}Assembly notes</summary><p id="tray-lock-tip"></p></details>
       <div id="download-state" class="callout" hidden></div>
       <p id="format-note" class="field-hint"></p>
     </div>
