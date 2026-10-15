@@ -11,7 +11,3 @@ export const TRAY_SLIDE_DIRECTIONS = [
 export function traySlideDirection(direction: TraySlideDirection = 'left') {
   return TRAY_SLIDE_DIRECTIONS.find(item => item.id === direction)!;
 }
-export function traySlideMotionInstructions(direction: TraySlideDirection = 'left'): string {
-  const d = traySlideDirection(direction);
-  return `Start the upper layer 6 mm to the ${d.entry}, lower, then slide ${d.lock} until flush. Slide ${d.release} 6 mm before lifting; do not twist or peel.`;
-}

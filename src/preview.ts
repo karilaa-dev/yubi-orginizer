@@ -3,7 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { STLLoader } from 'three/addons/loaders/STLLoader.js';
 import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { KeyPlacement, KeyType, PartSpec, ProjectGeometry, Vec3 } from './types';
-import { ISOMETRIC_DIRECTION, explodeDuration, explodePathPoint } from './preview-layout';
+import { ISOMETRIC_DIRECTION, createExplodeSequence, explodePathPoint, explodeStepProgress, type ExplodeStep } from './preview-layout';
 
 type ReferenceComponent = 'body' | 'connector' | 'touch';
 type PreviewView = 'iso' | 'top' | 'front';
@@ -16,6 +16,8 @@ type PositionedObject = {
   explode: Vec3;
   /** Slide before lifting (slide-lock), or ZERO. */
   release: Vec3;
+  /** The tray and its reference keys share exactly the same time interval. */
+  step?: ExplodeStep;
 };
 type CameraPose = { position: THREE.Vector3; target: THREE.Vector3; radius: number; distance: number };
 
@@ -69,6 +71,7 @@ export class OrganizerPreview {
   private focusTween: { frame: number; start: number; fromPosition: THREE.Vector3; fromTarget: THREE.Vector3; pose: CameraPose } | undefined;
   /** 0 = assembled, 1 = exploded; between the two while parts move (explodePathPoint). */
   private explodeProgress = 1;
+  private explodeSequence = createExplodeSequence([]);
   /** Explode / collapse in progress. The camera eases to the new framing until the user takes over. */
   private explodeTween: {
     frame: number; last: number; duration: number;
@@ -163,6 +166,7 @@ export class OrganizerPreview {
     const nextParts = new THREE.Group();
     const nextKeys = new THREE.Group();
     const nextPlacements: PositionedObject[] = [];
+    const sequence = createExplodeSequence(project.parts);
     let referenceError: unknown;
     try {
       for (const part of project.parts) {
@@ -195,7 +199,8 @@ export class OrganizerPreview {
           mesh.add(edge);
         }
         nextParts.add(mesh);
-        nextPlacements.push({ object: mesh, partId: part.id, position: part.position, explode: part.explode, release: part.release ?? ZERO });
+        nextPlacements.push({ object: mesh, partId: part.id, position: part.position, explode: part.explode, release: part.release ?? ZERO,
+          step: sequence.steps.get(part.id) });
       }
 
       try {
@@ -209,7 +214,8 @@ export class OrganizerPreview {
             const object = await this.createReference(key);
             nextKeys.add(object);
             const parent = this.keyParent(key, project.parts);
-            nextPlacements.push({ object, partId: parent?.id, position: key.position, explode: parent?.explode ?? ZERO, release: parent?.release ?? ZERO });
+            nextPlacements.push({ object, partId: parent?.id, position: key.position, explode: parent?.explode ?? ZERO, release: parent?.release ?? ZERO,
+              step: parent && sequence.steps.get(parent.id) });
           }
         }
       } catch (error) {
@@ -239,6 +245,7 @@ export class OrganizerPreview {
     if (nextKeys.children.length) this.keyGroup.add(...[...nextKeys.children]);
     this.stopExplodeTween();
     this.placements = nextPlacements;
+    this.explodeSequence = sequence;
     this.project = project;
     this.applyQuality();
     this.keyGroup.visible = this.showKeys;
@@ -341,13 +348,18 @@ export class OrganizerPreview {
     this.camera.updateProjectionMatrix();
 
     const now = performance.now();
-    const duration = explodeDuration(this.placements.some(p => p.release.some(v => v !== 0)));
+    const duration = Math.max(1, this.explodeSequence.duration);
+    const remaining = duration * Math.abs(target - current);
+    const sequenced = this.explodeSequence.steps.size > 1;
     // Toggling again mid-way sends the parts back along the same path from where they are.
     const previous = this.explodeTween;
     const userCamera = !!previous && !previous.camera;
     const camera = userCamera ? undefined : {
       fromPosition: this.camera.position.clone(), fromTarget: this.controls.target.clone(), pose,
-      start: now, length: Math.max(1, duration * Math.abs(target - current)),
+      // Keep the whole row in view until the last part has returned to the stack.
+      // Exploding zooms out promptly, before the first part travels across the row.
+      start: now + (sequenced && !exploded ? remaining : 0),
+      length: sequenced ? 350 : Math.max(1, remaining),
     };
     if (previous) { previous.camera = camera; previous.duration = duration; return; }
     this.explodeTween = { frame: 0, last: now, duration, camera };
@@ -373,7 +385,7 @@ export class OrganizerPreview {
       this.controls.update();
     }
     this.renderer.shadowMap.needsUpdate = this.quality === 'high';
-    if (this.explodeProgress !== target) {
+    if (this.explodeProgress !== target || (camera && now < camera.start + camera.length)) {
       tween.frame = requestAnimationFrame(this.stepExplode);
       this.renderer.render(this.scene, this.camera);
       return;
@@ -592,8 +604,8 @@ export class OrganizerPreview {
   }
 
   private applyPositions(): void {
-    for (const { object, position, explode, release } of this.placements) {
-      object.position.set(...explodePathPoint(position, explode, release, this.explodeProgress));
+    for (const { object, position, explode, release, step } of this.placements) {
+      object.position.set(...explodePathPoint(position, explode, release, explodeStepProgress(this.explodeProgress, step)));
     }
   }
 

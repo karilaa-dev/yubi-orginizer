@@ -89,8 +89,7 @@ service worker; the development server does not install the offline app.
 
 Under **Stacking**, choose **Standalone** for a single tray with an optional
 lift-off lid, **Stackable** for locating rims, or **Slide-lock** for the two-pin
-H20/V7 connection. Every layer of a stack needs the same size, connection and
-slide direction. **Layers › Add tray** creates an empty tray in the current
+connection. **Layers › Add tray** creates an empty tray in the current
 project, shares its footprint and connection, and moves the top lid to
 the new layer. Size, connection and slide direction changes apply to the whole
 set; keys, labels and pocket settings belong to each layer. You can also set **Size › Fixed size** by hand, or use
@@ -98,9 +97,7 @@ set; keys, labels and pocket settings belong to each layer. You can also set **S
 **Snap-fit (from an older version)**. Regenerate both mating parts when changing
 the connection type.
 
-See [printing and fit](docs/printing.md) and the
-[H20/V7 slide-lock design](docs/h20-slide-lock.md). Physical fit, retention
-and durability require a printed test; digital validation is not a physical test.
+See [printing and fit](docs/printing.md).
 
 Projects belong to the browser and device where they were created. Clearing
 site data removes them, so save project files for important designs, or use

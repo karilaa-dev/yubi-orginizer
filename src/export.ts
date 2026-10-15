@@ -1,7 +1,6 @@
 import { strToU8, zipSync } from 'fflate';
 import { serializeConfig, validateConfig } from './config';
-import { traySlideMotionInstructions } from './tray-slide';
-import type { HolderConfig, ProjectGeometry, TemplateId, TraySlideDirection } from './types';
+import type { HolderConfig, ProjectGeometry, TemplateId } from './types';
 
 /** Fired on `window` whenever a generated file is ready (see `downloadFile`). */
 export const DOWNLOAD_READY_EVENT = 'yubi-orginizer:download-ready';
@@ -43,17 +42,11 @@ export function projectFileText(config: HolderConfig, projectName?: string): str
   return JSON.stringify({ name, ...validateConfig(config) }, null, 2) + '\n';
 }
 
-export function trayH20Instructions(direction: TraySlideDirection = 'left'): string {
-  return 'Slide-lock (H20/V7): use matching outside dimensions, connection, and slide direction on every layer. ' + traySlideMotionInstructions(direction) + ' Directions are viewed from above; front is the front-text edge. Two reinforced pins and two guides are integrated into each tray. Print at 100% scale using the same material as your H20 reference. Print trays pins-up and lids with their flat inside face down in the supplied orientation; inspect the sloped receiver roofs with supports disabled. This joint is incompatible with Stackable and older Snap-fit parts. Physical retention and durability need a printed test.';
-}
-export const TRAY_H20_INSTRUCTIONS = trayH20Instructions();
-
 export const TRAY_SNAP_INSTRUCTIONS = 'Print Snap-fit parts in PLA or PLA Matte. Four solid frame-supported catches engage recesses in the mating perimeter skirt. Align matching layers and press straight down; lift one edge progressively at the finger notch to open. Keep the long perimeter channels clear so the skirt can flex. The default engagement is 0.2 mm. Regenerate both mating parts: this joint is incompatible with earlier Snap fit and Cantilever prints. Physical fit, opening force and durability require a printed test.';
 
 /** Keep instructions tied to the exported tray connection. */
 export function trayConnectionInstructions(config: HolderConfig): string[] {
   if (config.template === 'inventory_tray') {
-    if (config.options.tray.connection === 'h20_slide_v7') return [trayH20Instructions(config.options.tray.slideDirection)];
     if (config.options.tray.connection === 'stackable') return ['Stackable: match outside dimensions on every tray; align the locating rims and lower straight down. Lift straight up to separate.'];
     if (config.options.tray.connection === 'snap_fit') return [TRAY_SNAP_INSTRUCTIONS];
   }
@@ -61,11 +54,10 @@ export function trayConnectionInstructions(config: HolderConfig): string[] {
 }
 
 function trayLockPrintNotes(config: HolderConfig, project: ProjectGeometry): string[] {
-  const h20Notes = project.parts.some(p => p.id.startsWith('fit-tray-h20-')) || (config.template === 'inventory_tray' && config.options.tray.connection === 'h20_slide_v7') ? ['SLIDE-LOCK (H20/V7)', config.template === 'inventory_tray' ? trayH20Instructions(config.options.tray.slideDirection) : TRAY_H20_INSTRUCTIONS] : [];
   const snap = project.parts.some(p => p.id.startsWith('fit-tray-snap-')) || (config.template === 'inventory_tray' && config.options.tray.connection === 'snap_fit' && project.parts.some(p => p.id === 'tray' || p.id.endsWith('-tray')));
-  if (!snap) return h20Notes;
+  if (!snap) return [];
   return [
-    ...h20Notes, 'SNAP-FIT (OLDER VERSION)', TRAY_SNAP_INSTRUCTIONS,
+    'SNAP-FIT (OLDER VERSION)', TRAY_SNAP_INSTRUCTIONS,
     'Four broad solid catches are integral with the frame. The surrounding receiver skirt supplies compliance. Inspect the 45-degree contact faces and narrow channel roof closures in the slicer.',
     'Print Snap-fit parts in PLA or PLA Matte, in the supplied orientation at 100% scale, with 5% infill and Arachne walls.',
     'Inspect the connection surfaces and clearance channels in the slicer before printing. Keep them free of supports.',
@@ -169,13 +161,11 @@ export function buildPackage(config: HolderConfig, project: ProjectGeometry, mes
     'Original XY contours and upright USB socket fits are unchanged. Flat C Nano pockets support the USB-C connector root on a raised shelf and leave 1 mm of clearance beneath its tip for grabbing. No global fit offset is applied.',
     ...(config.template === 'inventory_tray' && config.options.tray.lid && config.options.tray.connection !== 'snap_fit' ? [
       `Lid style: ${config.options.tray.lidStyle === 'minimal' ? 'Minimal (closed 1.2 mm panel with exterior ribs)' : 'Regular (2.4 mm panel)'}. Both keep the inside face at the same seating plane as an upper tray.`,
-      ...(config.options.tray.connection === 'h20_slide_v7' && config.options.tray.lidStyle === 'regular'
-        ? ['The regular slide-lock lid has a continuous rounded border with recessed thumb grips at the sliding ends. Hold the tray and push the lid 6 mm opposite the chosen locking direction before lifting. Grip recesses do not change the H20 friction fit.'] : []),
-      config.options.tray.connection === 'h20_slide_v7' || config.options.tray.lidStyle === 'minimal'
-        ? 'Print the lid with its flat inside face on the bed and its exterior border/ribs/receiver housings upward. Keep the exported orientation.'
-        : 'Print the regular lift-off lid exterior-down in its exported orientation.',
+      ...(config.options.tray.connection === 'h20_slide_v7' ? [] : [config.options.tray.lidStyle === 'minimal'
+        ? 'Print the lid with its flat inside face on the bed and its exterior ribs upward. Keep the exported orientation.'
+        : 'Print the regular lift-off lid exterior-down in its exported orientation.']),
     ] : []),
-    'New lid and tray connection interfaces require a physical fit test for your printer.',
+    ...(config.template === 'inventory_tray' && config.options.tray.connection === 'h20_slide_v7' ? [] : ['New lid and tray connection interfaces require a physical fit test for your printer.']),
     ...(config.template === 'desktop_dock' ? ['Desktop dock socket fit is still being refined. Print a small dock with one key before a full organizer.'] : []),
     ...trayLockPrintNotes(config, project), '',
     'Parts:', ...project.parts.map(p => `- ${p.id}.stl: ${p.name}`), '',

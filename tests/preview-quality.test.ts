@@ -3,6 +3,9 @@ import * as THREE from 'three';
 import { STLLoader } from 'three/addons/loaders/STLLoader.js';
 import { STLExporter } from 'three/addons/exporters/STLExporter.js';
 import { OrganizerPreview, previewPixelRatio } from '../src/preview';
+import { createSlot, defaultConfig } from '../src/config';
+import { buildTraySet } from '../src/geometry/layers';
+import { withLayers } from '../src/layers';
 import type { ProjectGeometry } from '../src/types';
 
 describe('preview drawing-buffer limits', () => {
@@ -53,7 +56,7 @@ function fixture() {
   Object.assign(preview, {
     disposed: false, revision: 0, theme: 'light', quality: 'high', partGroup, keyGroup,
     renderer, sunlight, ground, resize, updateGround, requestRender, loader: new STLLoader(),
-    project, fitted: true, bounds: new THREE.Box3(), showKeys: true, exploded: false,
+    project, fitted: true, bounds: new THREE.Box3(), showKeys: true, exploded: false, explodeProgress: 0,
     ambient: new THREE.HemisphereLight(), fill: new THREE.DirectionalLight(),
     container: { dataset: {} }, fitCamera: vi.fn(), placements: [],
   });
@@ -131,6 +134,36 @@ function project(name: string): ProjectGeometry {
 }
 
 describe('quality changes during asynchronous preview loading', () => {
+  it('moves every reference key with its own tray throughout the staged explode and collapse', async () => {
+    const { preview, partGroup, keyGroup } = fixture();
+    Object.assign(preview, { loadReference: async () => {}, createReference: async () => new THREE.Group() });
+    const geometry = buildTraySet(withLayers(Array.from({ length: 3 }, (_, index) => {
+      const config = defaultConfig();
+      config.slots = [createSlot('A'), createSlot('C')];
+      Object.assign(config.options.tray, { connection: 'h20_slide_v7', slideDirection: 'back',
+        footprint: { width: 100, depth: 100 }, lid: index === 2 });
+      return { name: `Tray ${index + 1}`, config };
+    })));
+    const bytes = new STLExporter().parse(new THREE.Mesh(new THREE.BoxGeometry(10, 20, 4)), { binary: true }).buffer as ArrayBuffer;
+    await preview.setProject(geometry, new Map(geometry.parts.map(part => [part.id, bytes])));
+    const progress = Array.from({ length: 51 }, (_, i) => i / 50);
+    for (const p of [...progress, ...progress.reverse()]) {
+      Object.assign(preview, { explodeProgress: p });
+      Object.getPrototypeOf(preview).applyPositions.call(preview);
+      for (const [index, key] of geometry.keys.entries()) {
+        const partIndex = geometry.parts.findIndex(part => part.id === key.partId);
+        const offset = keyGroup.children[index].position.clone().sub(partGroup.children[partIndex].position);
+        for (const [axis, coordinate] of offset.toArray().entries()) expect(coordinate).toBeCloseTo(key.position[axis] - geometry.parts[partIndex].position[axis]);
+      }
+      expect(partGroup.children[0].position.toArray()).toEqual(geometry.parts[0].position);
+      if (p > 0 && p < .1) {
+        expect(partGroup.children[1].position.toArray()).toEqual(geometry.parts[1].position);
+        expect(partGroup.children[2].position.toArray()).toEqual(geometry.parts[2].position);
+        expect(partGroup.children[3].position.toArray()).not.toEqual(geometry.parts[3].position);
+      }
+    }
+  });
+
   it('applies the current quality when a pending project commits', async () => {
     const { preview, partGroup, renderer } = fixture();
     let release!: () => void;

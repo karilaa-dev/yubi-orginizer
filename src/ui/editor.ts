@@ -1775,7 +1775,6 @@ export function createEditor(env: EditorEnv): Editor {
       case 'all-layers':
         if (canLeaveLayer()) { allLayers = true; setExploded(true); renderLayers(); syncPreviewFocus(); }
         break;
-      case 'help-stacking': env.openHelp('help-stacking'); break;
       case 'dismiss-dock-notice': dismissDockNotice(); break;
       case 'retry': invalidate(); break;
       case 'cancel': cancelGeneration(); break;

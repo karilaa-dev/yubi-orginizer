@@ -16,10 +16,7 @@ Their four underside receivers use the same external-footprint datums on every
 layer. **Slide direction** chooses the upper layer's locking motion: Left,
 Right, Front, or Back, viewed from above. Front is the front-text edge (-Y).
 Left is the default for older projects. The pins, guides, underside receivers,
-and local bearing pads rotate together; keys and text stay in place. Start
-6 mm opposite the chosen direction, lower, then slide until flush. Reverse
-that motion before lifting. Match outside dimensions, connection type, and
-direction when building a stack; regenerate both mating parts after changing it.
+and local bearing pads rotate together; keys and text stay in place.
 
 The 5.8 mm head, 5.6 mm gripping cavity, 4.2 mm pin height, 0.4 mm head/root
 end relief, and 64-segment roots come from the handoff. No global fit offset is
@@ -57,9 +54,8 @@ populations with the same outside dimensions and slide direction.
 **Regular** uses a 2.4 mm panel with a continuous rounded perimeter that conceals
 the four receiver housings. A softened outer edge and rounded inner corners
 blend the border into the panel. Recessed thumb wells with three shallow
-traction grooves sit at the two sliding ends, clear of the receivers. Hold
-the tray and push the lid 6 mm opposite the locking direction before lifting;
-the grips rotate with that direction. They provide purchase without changing
+traction grooves sit at the two sliding ends, clear of the receivers.
+The grips rotate with the selected direction. They provide purchase without changing
 the supplied H20 interference fit. Compact footprints shorten the grips to
 stay clear of the sockets; grips are omitted if less than 8 mm is available.
 
@@ -73,8 +69,7 @@ The regular border and minimal lid's four tapered receiver housings rise above
 the panel to 7.8 mm. They retain the
 original 6.2 mm sloped socket roofs and at least 1.6 mm of top cover. These local
 housings provide the connector height without raising the inside face over the
-keys. Print both lids **flat inside face down**, with the border/housings/ribs upward.
-The assembled orientation and print orientation are now identical.
+keys. The assembled orientation and print orientation are identical.
 
 Both retaining-pin pads are 10 mm deep, overlapping the 2.7 mm outside rim by
 0.7 mm. This joins them to the thin border in every sliding direction, like
@@ -117,9 +112,3 @@ SCAD triangulates the ruled transition: the difference during travel is at most
 1.0766666667 mm³. Complete-tray motion is compared with the measured local SCAD
 curve; contact must remain confined to the pin heads. STL assembly probes use
 0.00001 mm seating separation to avoid float32 coincident-face artifacts.
-
-Digital contact volume is not holding force. Slice with supports disabled using
-the supplied orientation and the material/settings used for the reference fit.
-Inspect the narrow roof closures and roots, then compare the printed coupon and
-an occupied tray/lid for entry, retention, removal and repeatability. Physical
-strength, creep, fatigue and resistance to peeling remain unqualified.

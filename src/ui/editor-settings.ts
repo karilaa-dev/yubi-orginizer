@@ -69,7 +69,6 @@ export function trayGroups(config: HolderConfig, open: ReadonlySet<string>, pane
     stacking: `<fieldset class="option-cards" data-control="tray.connection" aria-describedby="hint-tray.connection error-tray.connection"><legend>Connection</legend>${cards}${fieldNotes('tray.connection')}</fieldset>`
       + segmentedField({
         id: 'tray.slideDirection', legend: 'Slide direction', options: SLIDE_DIRECTION_OPTIONS, value: t.slideDirection, className: 'direction-field',
-        hintExtra: ' <button type="button" class="text-button inline-link" data-action="help-stacking">How to assemble</button>',
       })
       + `<div id="stacking-callout" class="callout stacking-callout" hidden>${icon('layers')}<div class="callout-body"><p id="stacking-callout-text"></p>
           <div class="callout-actions"><button type="button" class="button secondary compact" data-action="lock-footprint" hidden></button>`

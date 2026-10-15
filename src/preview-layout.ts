@@ -1,4 +1,4 @@
-import type { Vec3 } from './types';
+import type { PartSpec, Vec3 } from './types';
 
 export const ISOMETRIC_DIRECTION: Vec3 = [1, -1.4, 1.05];
 
@@ -12,6 +12,32 @@ export function lidExplodeOffset(width: number, closedTop: number, printedHeight
 export const RELEASE_SHARE = 0.3;
 /** Explode / collapse duration, longer when a part has to slide first. */
 export const explodeDuration = (slides: boolean): number => (slides ? 1300 : 950);
+
+/** One part's interval on the full stack's reversible explode timeline. */
+export interface ExplodeStep { start: number; end: number }
+
+/** Remove the highest part first, leaving its supporting tray still until it is clear.
+ * Reversing this timeline puts the lowest tray back first and the lid on last. */
+export function createExplodeSequence(parts: readonly PartSpec[]): { duration: number; steps: Map<string, ExplodeStep> } {
+  const moving = parts.filter(part => part.explode.some(v => v !== 0))
+    .sort((a, b) => b.position[2] - a.position[2]);
+  const durations = moving.map(part => explodeDuration(!!part.release?.some(v => v !== 0)));
+  const total = durations.reduce((sum, duration) => sum + duration, 0);
+  const steps = new Map<string, ExplodeStep>();
+  let elapsed = 0;
+  for (const [index, part] of moving.entries()) {
+    steps.set(part.id, { start: elapsed / total, end: (elapsed + durations[index]) / total });
+    elapsed += durations[index];
+  }
+  // Larger stacks use brisker individual steps without rushing the release motion.
+  return { duration: total / Math.min(1.75, Math.sqrt(Math.max(1, moving.length))), steps };
+}
+
+export function explodeStepProgress(progress: number, step?: ExplodeStep): number {
+  if (!step || progress <= step.start) return 0;
+  if (progress >= step.end) return 1;
+  return (progress - step.start) / (step.end - step.start);
+}
 
 const easeInOut = (t: number): number => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 const bezier = (a: number, b: number, c: number, d: number, t: number): number => {

@@ -65,7 +65,7 @@ describe('three tray types and H20 compatibility', () => {
     c.slots = [];
     expect(buildProject(c)).toEqual({ parts: [], keys: [], dimensions: [0, 0, 0] });
   });
-  it('keeps non-stackable lid attachment, restores lift-off stacking and separates directions in print notes', () => {
+  it('keeps non-stackable lid attachment, restores lift-off stacking without slide-lock print notes', () => {
     const c = tray(); c.options.tray.connection = 'none';
     const single = buildProject(c).parts[0].scad.trim().split('\n').at(-1);
     c.options.tray.connection = 'stackable';
@@ -73,7 +73,7 @@ describe('three tray types and H20 compatibility', () => {
     expect(single).toContain('true,false,'); expect(stack).toContain('true,true,');
     expect(trayConnectionInstructions(c).join(' ')).toContain('Lift straight up');
     c.options.tray.connection = 'h20_slide_v7';
-    expect(trayConnectionInstructions(c).join(' ')).toContain('Slide right 6 mm before lifting');
+    expect(trayConnectionInstructions(c)).toEqual([]);
   });
 });
 
@@ -112,7 +112,6 @@ describe('slide direction', () => {
     expect(stations.pins).toHaveLength(2); expect(stations.guides).toHaveLength(2);
     expect(p.parts[0].scad.trim().split('\n').at(-1)).toContain(`,true,${direction.angle});`);
     expect(p.parts[1].scad.trim().split('\n').at(-1)).toContain(`,100,90,${direction.angle},"regular");`);
-    expect(trayConnectionInstructions(c).join(' ')).toContain(`slide ${direction.lock} until flush`);
     delete c.options.tray.lidTextPercent;
     const legacy = buildProject(c).parts[1].scad.trim().split('\n').at(-1);
     expect(legacy).toContain('inventory_tray_h20_lid_legacy(');

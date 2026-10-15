@@ -31,24 +31,9 @@ search, not a guarantee of the mathematical minimum.
 A change exceeding a fixed size offers Resize or Cancel before autosaving; key pockets are never
 scaled.
 
-For [H20/V7 slide-lock](h20-slide-lock.md), keep pins upward and print slide-lock
-lids with the flat inside face down. Start the upper
-layer 6 mm opposite the selected slide direction, lower, then slide until
-flush; reverse the motion before lifting. Match the direction on every layer.
-Preserve the material/settings used for your reference fit and inspect
-the sloped receiver roofs with supports disabled.
-
 Choose **Lid › Style → Regular** for a 2.4 mm panel or **Minimal** for a
 closed 1.2 mm panel with exterior ribs. Both have the same key-facing height as
-a stacked tray. Slide-lock lids place their receiver housings above the panel;
-print them inside-face down. Minimal lift-off lids also print inside-face down,
-while regular lift-off lids retain their exterior-down orientation. Exported
-parts are already oriented correctly. Extra height around the slide-lock
-receivers is external and does not add space above the keys.
-The regular slide-lock lid conceals its receivers in a rounded border. Use
-the recessed thumb grips at the sliding ends to push it 6 mm opposite the
-locking direction, then lift. The grips follow the selected direction;
-the H20 friction fit remains unchanged.
+a stacked tray. Exported parts are already oriented correctly.
 
 Flat C Nano pockets use the selected **7B** design: the body and USB-C connector
 rest horizontally, with a fixed 14 mm finger opening and 2.3 mm clearance below

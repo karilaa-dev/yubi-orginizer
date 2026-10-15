@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { strFromU8, unzipSync } from 'fflate';
 import { defaultConfig, parseConfig, serializeConfig } from '../src/config';
-import { buildPackage, DOWNLOAD_READY_EVENT, trayConnectionInstructions, TRAY_SNAP_INSTRUCTIONS, TRAY_H20_INSTRUCTIONS, type DownloadReadyDetail } from '../src/export';
+import { buildPackage, DOWNLOAD_READY_EVENT, trayConnectionInstructions, TRAY_SNAP_INSTRUCTIONS, type DownloadReadyDetail } from '../src/export';
 import { buildProject, buildTrayH20Test, buildTraySnapTest } from '../src/geometry';
 import type { ProjectGeometry } from '../src/types';
 
@@ -88,13 +88,13 @@ describe('portable package contents', () => {
     expect(parseConfig(strFromU8(files['project.yubi-orginizer.json']))).toEqual(config);
   });
 
-  it('includes both tray lock instructions in combined developer sample packages', () => {
+  it('keeps snap-fit guidance without slide-lock instructions in combined sample packages', () => {
     const config = defaultConfig();
     const project: ProjectGeometry = { parts: [...buildTraySnapTest().parts, ...buildTrayH20Test().parts], keys: [], dimensions: [0, 0, 0] };
     const meshes = new Map(project.parts.map(p => [p.id, new Uint8Array([1, 2, 3]).buffer]));
     const instructions = strFromU8(unzipSync(buildPackage(config, project, meshes, true))['READ ME.txt']);
     expect(instructions).toContain(TRAY_SNAP_INSTRUCTIONS);
-    expect(instructions).toContain(TRAY_H20_INSTRUCTIONS);
+    expect(instructions).not.toMatch(/SLIDE-LOCK \(H20\/V7\)|Start the upper layer|H20 reference/);
     expect(instructions).not.toContain('SIDE SLIDERS');
     expect(instructions).not.toContain('SIDE BUTTON');
     expect(project.parts.filter(p => p.id.startsWith('fit-tray-')).map(p => p.id)).toEqual(['fit-tray-snap-lower', 'fit-tray-snap-upper', 'fit-tray-h20-lower', 'fit-tray-h20-upper']);
@@ -142,13 +142,19 @@ describe('tray lock help and download instructions', () => {
     expect(trayConnectionInstructions(config)).toEqual([]);
   });
 
-  it('provides slide-lock instructions for a slide-lock tray only', () => {
-    const config = defaultConfig(); config.options.tray.connection = 'h20_slide_v7';
-    expect(trayConnectionInstructions(config)).toEqual([TRAY_H20_INSTRUCTIONS]);
-    expect(TRAY_H20_INSTRUCTIONS).toContain('incompatible with Stackable and older Snap-fit parts');
-    expect(TRAY_H20_INSTRUCTIONS).not.toMatch(/enclosure/i);
-    config.template = 'desktop_dock';
-    expect(trayConnectionInstructions(config)).toEqual([]);
+  it('omits slide-lock guidance from Help and exported readmes for every direction and lid style', () => {
+    const { config, project, meshes } = fixture();
+    config.options.tray.connection = 'h20_slide_v7';
+    config.options.tray.lid = true;
+    for (const direction of ['left', 'right', 'front', 'back'] as const) {
+      config.options.tray.slideDirection = direction;
+      for (const style of ['regular', 'minimal'] as const) {
+        config.options.tray.lidStyle = style;
+        expect(trayConnectionInstructions(config)).toEqual([]);
+        const readme = strFromU8(unzipSync(buildPackage(config, project, meshes))['READ ME.txt']);
+        expect(readme).not.toMatch(/H20|6 mm|pins-up|flat inside face|receiver roofs|twist or peel|SLIDE-LOCK/i);
+      }
+    }
   });
 });
 
