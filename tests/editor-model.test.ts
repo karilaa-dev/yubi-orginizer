@@ -316,7 +316,7 @@ describe('Settings panel markup', () => {
     expect(tabs(tray())[0]).toContain('data-template-switch');
     expect(tabs(tray())[2]).not.toContain('data-template-switch');
     expect(tabs(tray())[1]).toContain('data-control="tray.spacing"');
-    expect(trayHtml).not.toContain('Snap-fit (from an older version)');
+    expect(trayHtml).not.toContain('Snap-fit (older version)');
     expect(trayHtml).not.toContain('dock-notice');
     expect(trayHtml).not.toContain('data-control="tray.lid"');
     expect(tabs(tray())[3]).toContain('data-control="tray.lidStyle"');
@@ -331,7 +331,7 @@ describe('Settings panel markup', () => {
   it('keeps the retired snap-fit card only while it is selected', () => {
     const c = tray();
     c.options.tray.connection = 'snap_fit';
-    expect(trayGroups(c, new Set(), 'layers')).toContain('Snap-fit (from an older version)');
+    expect(trayGroups(c, new Set(), 'layers')).toContain('Snap-fit (older version)');
   });
 
   it('reads control values from the config', () => {

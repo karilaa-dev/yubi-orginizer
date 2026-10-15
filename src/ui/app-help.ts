@@ -6,8 +6,9 @@
 import type { PwaStatus } from '../pwa';
 import { dialogHeading } from './app-dialogs';
 import { esc } from './dom';
+import { icon } from '../icons';
 
-export const IOS_INSTALL_NOTE = 'On iPhone or iPad: Share → Add to Home Screen. The Home Screen app keeps its own projects, separate from Safari, so save project files here and import them there. Safari may clear site data after 7 days without a visit.';
+export const IOS_INSTALL_NOTE = 'On iPhone or iPad: Share → Add to Home Screen. The Home Screen app keeps its own projects, so move them with project files.';
 
 export function isStandalone(): boolean {
   if (typeof window === 'undefined') return false;
@@ -45,7 +46,18 @@ export function aboutVersionMarkup({ version, time, commit, commitUrl }: BuildIn
   const commitPart = !commit ? ''
     : commitUrl ? ` · commit <a href="${esc(commitUrl)}" target="_blank" rel="noopener" title="${esc(commit)}">${short}</a>`
     : ` · commit <span title="${esc(commit)}">${short}</span>`;
-  return `yubi-orginizer · Version ${esc(version)} · built ${esc(time)}${commitPart}`;
+  return `Version ${esc(version)} · built ${esc(time)}${commitPart}`;
+}
+
+/** Source code, issues and releases. */
+export const REPO_URL = 'https://github.com/karilaa-dev/yubi-orginizer';
+
+const isMac = (): boolean => typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
+
+function shortcutsMarkup(): string {
+  const mod = isMac() ? '⌘' : 'Ctrl+';
+  const rows = [['Undo', `${mod}Z`], ['Redo', isMac() ? '⇧⌘Z' : 'Ctrl+Shift+Z']];
+  return `<dl class="shortcut-list">${rows.map(([action, keys]) => `<div><dt>${action}</dt><dd><kbd>${keys}</kbd></dd></div>`).join('')}</dl>`;
 }
 
 export function helpDialogMarkup(build: BuildInfo): string {
@@ -53,44 +65,37 @@ export function helpDialogMarkup(build: BuildInfo): string {
     ${dialogHeading('help-title', 'Help')}
     <div class="help-content">
       <section aria-labelledby="help-printing">
-        <h3 id="help-printing">Printing &amp; fit</h3>
-        <p>Print at 100% scale. Models are in millimetres and each part rests flat on the bed. Preview keys and colours aren't printed.</p>
-        <p>Print one pocket first to check the fit on your printer. The 5Ci pocket has extra side clearance and takes the connector either way.</p>
-        <p>Dock fit is still being tuned. Print a one-key dock before a full organizer.</p>
+        <h3 id="help-printing">Printing</h3>
+        <p>Print at 100% scale. Print a single pocket first to check the fit on your printer. Keys and colours in the preview aren't printed.</p>
       </section>
       <section aria-labelledby="help-stacking">
         <h3 id="help-stacking" tabindex="-1">Stacking layers</h3>
-        <p>Stacked trays need the same size, connection and slide direction on every layer. Use New matching layer in the project menu to copy them. Put the lid on the top layer only.</p>
+        <p>Add trays and a lid in the Layers tab. All layers share one size and connection; the lid always goes on top.</p>
         <p id="tray-lock-help-text" hidden></p>
       </section>
       <section aria-labelledby="help-saving">
         <h3 id="help-saving">Saving &amp; offline</h3>
-        <p>Everything saves automatically in this browser. Save a project file (.json) to back up a design or move it to another device.</p>
+        <p>Projects save automatically in this browser. Save a project file (.json) to back up a design or move it to another device.</p>
         <p id="offline-help-status"></p>
         <p id="help-install" class="help-install" hidden><button type="button" class="button secondary" data-action="install">Install app</button></p>
         <p id="ios-install-note" hidden>${esc(IOS_INSTALL_NOTE)}</p>
       </section>
-      <section aria-labelledby="help-undo">
-        <h3 id="help-undo">Undo &amp; redo</h3>
-        <p>Use the Undo and Redo buttons beside the project name, or Ctrl+Z to undo and Ctrl+Shift+Z or Ctrl+Y to redo. On Mac, use ⌘Z and ⌘⇧Z.</p>
-        <p>Undo covers keys, settings, names and layers while a project is open. Typing in a text field keeps its usual undo. Opening another project or reloading starts a new history.</p>
+      <section aria-labelledby="help-shortcuts">
+        <h3 id="help-shortcuts">Shortcuts</h3>
+        ${shortcutsMarkup()}
       </section>
-      <section aria-labelledby="help-changes">
-        <h3 id="help-changes">What changed</h3>
-        <ul>
-          <li>There's no Save button: projects save automatically.</li>
-          <li>All projects: select yubi-orginizer at the top left.</li>
-          <li>Label settings are in the Keys tab.</li>
-          <li>Footprint, height and spacing are in the Size tab. Organizer type and Columns are in the Keys tab.</li>
-        </ul>
-      </section>
-      <section aria-labelledby="help-about">
+      <section class="about" aria-labelledby="help-about">
         <h3 id="help-about">About</h3>
+        <p>yubi-orginizer is free and open source. Everything runs on your device.</p>
+        <div class="about-links">
+          <a class="button secondary" href="${REPO_URL}" target="_blank" rel="noopener">${icon('github')}View on GitHub</a>
+          <a class="button quiet" href="${REPO_URL}/issues" target="_blank" rel="noopener">Report an issue${icon('external')}</a>
+        </div>
         <p class="about-version">${aboutVersionMarkup(build)}</p>
         <div class="about-update">
-          <button type="button" class="button secondary" data-action="check-updates">Check for updates</button>
+          <button type="button" class="button secondary compact" data-action="check-updates">Check for updates</button>
           <span id="update-check-status" role="status"></span>
-          <button type="button" class="button primary" data-action="update-now" hidden>Update now</button>
+          <button type="button" class="button primary compact" data-action="update-now" hidden>Update now</button>
         </div>
       </section>
     </div>
@@ -106,7 +111,5 @@ export function filamentDialogMarkup(): string {
 
 export function filamentDetailMarkup(grams: number, meters: number): string {
   return `<p class="estimate-total">≈ ${grams.toFixed(1)} g <span>· ${meters.toFixed(2)} m</span></p>
-    <p>All printable parts · PLA · 1.75 mm</p>
-    <p>5% infill, two 0.42 mm walls, 0.2 mm layers, four top and bottom layers.</p>
-    <p>Excludes supports, brim and purge. Your slicer has the final number.</p>`;
+    <p>All parts in PLA (1.75 mm) at 5% infill, 0.2 mm layers. Your slicer has the final number.</p>`;
 }

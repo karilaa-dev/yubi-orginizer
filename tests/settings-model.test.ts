@@ -166,7 +166,7 @@ describe('dock settings model', () => {
     const c = { ...tray(), template: 'desktop_dock' as const };
     const s = dockSettingsState(c);
     expect(s.groups.map(g => g.summary)).toEqual(['“KEY DOCK”']);
-    expect(s.size.readout).toMatch(/^[\d.]+ × [\d.]+ mm\. Spacing and margins set the size\.$/);
+    expect(s.size.readout).toMatch(/^[\d.]+ × [\d.]+ mm, set by spacing and margins\.$/);
     expect(s.controls['dock.titlePercent']).toMatchObject({ visible: true, hint: FRONT_TEXT_NOTE });
     c.options.dock.title = '';
     expect(dockSettingsState(c).groups[0]).toMatchObject({ summary: 'No text', modified: true });

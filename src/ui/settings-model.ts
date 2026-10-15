@@ -89,8 +89,8 @@ export function footprintChoice(config: HolderConfig, match: MatchState): Footpr
   return match && footprint.width === match.width && footprint.depth === match.depth ? 'match' : 'fixed';
 }
 
-export const FRONT_TEXT_NOTE = "Engraved into the front wall, so it won't print perfectly crisp. Larger text reads better.";
-export const RETENTION_NOTE = 'Not tested yet: keys may sit too tight or too loose. Print a one-key tray first, ideally in PETG.';
+export const FRONT_TEXT_NOTE = 'Engraved into the front wall. Larger text prints crisper.';
+export const RETENTION_NOTE = 'Untested: print a one-key tray first to check the fit.';
 export const C_NANO_SCOOP_NOTE = 'C Nano uses a fixed finger opening.';
 export const C_NANO_RETENTION_NOTE = 'C Nano uses pry access without tabs.';
 
@@ -141,7 +141,7 @@ export const CONNECTION_OPTIONS: readonly { value: TrayConnection; title: string
   { value: 'none', title: 'Standalone', description: 'A single tray.' },
   { value: 'stackable', title: 'Stackable', description: 'Rims keep layers aligned. Lift to separate.' },
   { value: 'h20_slide_v7', title: 'Slide-lock', description: 'Pins lock layers. Slide to release.' },
-  { value: 'snap_fit', title: 'Snap-fit (from an older version)', description: 'Kept as saved. Choosing another type replaces it.' },
+  { value: 'snap_fit', title: 'Snap-fit (older version)', description: 'Kept as saved. Choosing another type replaces it.' },
 ];
 
 /** Segment labels for Slide direction, e.g. "← Left". */
@@ -174,7 +174,7 @@ export function traySettingsState(config: HolderConfig, errors: ReadonlySet<stri
   const controls: Record<TrayControlId, ControlState> = {
     'tray.columns': state(true), 'tray.spacing': state(true), 'tray.rowGap': state(true),
     'tray.connection': state(true),
-    'tray.slideDirection': state(h20, 'Seen from above. Front is the front-text edge. Use the same direction on every layer.'),
+    'tray.slideDirection': state(h20, 'Seen from above, front text facing you.'),
     'tray.lidStyle': state(t.lid && !snap, t.lidStyle === 'minimal' ? 'Thin ribbed panel. Uses less filament.' : h20 ? 'Rounded border with thumb grips.' : 'Solid panel.'),
     'tray.lidText': state(t.lid),
     'tray.lidTextPercent': state(t.lid && lidText, legacyLidSize ? 'Available after the preview updates.' : '', legacyLidSize),
@@ -228,7 +228,7 @@ export function traySettingsState(config: HolderConfig, errors: ReadonlySet<stri
     lidStyleNote: t.lid && snap ? 'Snap-fit lids use a fixed design.' : '',
     stacking: {
       stacked,
-      callout: !stacked ? '' : many ? `Every layer uses ${fmt(width)} × ${fmt(depth)} mm. Change the shared footprint in Size.` : fixed ? `Every layer uses ${fmt(width)} × ${fmt(depth)} mm.` : 'New layers share this footprint. Fit to keys sizes the whole set.',
+      callout: !stacked ? '' : fixed || many ? `Every layer is ${fmt(width)} × ${fmt(depth)} mm.${many ? ' Change it in Size.' : ''}` : 'New layers share this size.',
       lockLabel: stacked && !fixed && hasKeys && !many ? `Fix size at ${fmt(width)} × ${fmt(depth)} mm` : null,
     },
     size: { fixed, choice, width, depth, height: layout.height, requiredWidth: rw, requiredDepth: rd, tooSmall, readout, grow },
@@ -249,6 +249,6 @@ export function dockSettingsState(config: HolderConfig, errors: ReadonlySet<stri
   return {
     groups: DOCK_GROUPS.map(g => ({ id: g.id, title: g.title, summary: summaries[g.id], modified: modified[g.id], error: g.controls.some(c => errors.has(c)) })),
     controls,
-    size: { readout: config.slots.length ? `${fmt(dock.width)} × ${fmt(dock.depth)} mm. Spacing and margins set the size.` : 'Add keys to see the size.' },
+    size: { readout: config.slots.length ? `${fmt(dock.width)} × ${fmt(dock.depth)} mm, set by spacing and margins.` : 'Add keys to see the size.' },
   };
 }

@@ -106,6 +106,8 @@ export interface SizeMarkupOptions {
   match: MatchState;
   /** Other saved trays whose width and depth can be copied. */
   candidates: readonly FootprintMatch[];
+  /** The project has more than one tray layer, which all share the size. */
+  shared?: boolean;
 }
 
 const section = (id: string, title: string, body: string): string =>
@@ -145,7 +147,7 @@ export function sizePanelMarkup(config: HolderConfig, options: SizeMarkupOptions
       + `<div class="dimension-fields">${numberField({ id: 'tray.width', label: 'Width', value: layout.width || 80, min: 20, max: 1000, step: 0.01, describedBy: 'tray-size-readout' })}`
       + `${numberField({ id: 'tray.depth', label: 'Depth', value: layout.depth || 80, min: 20, max: 6000, step: 0.01, describedBy: 'tray-size-readout' })}</div>`
       + '<button type="button" id="grow-footprint" class="button secondary compact grow-button" data-action="grow-footprint" hidden></button>'
-      + '<p class="field-hint">Width, depth and height apply to every tray layer.</p>'
+      + (options.shared ? '<p class="field-hint">Shared by every tray layer.</p>' : '')
       + sliderField({ id: 'tray.height', label: 'Height', value: Math.max(t.height, minHeight), min: minHeight, max: 20, step: 0.1 }))
     + section('spacing', titles.spacing, sliderField({ id: 'tray.spacing', label: 'Column spacing', value: t.spacing, min: 24, max: 42, step: 0.5 })
       + sliderField({ id: 'tray.rowGap', label: 'Row spacing', value: t.rowGap, min: 2, max: 40, step: 0.5 })

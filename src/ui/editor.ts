@@ -124,7 +124,7 @@ export function editorMarkup(): string {
           <div id="settings-panel" class="tab-panel" role="tabpanel" aria-labelledby="settings-tab" hidden></div>
           <div id="layers-panel" class="tab-panel" role="tabpanel" aria-labelledby="layers-tab" hidden>
             <section id="layer-manager" class="layer-manager" aria-label="Project layers"></section><div id="layer-settings" class="groups"></div>
-            <p id="layers-overview-hint" class="layer-overview-hint" hidden>Select a layer to focus the camera and edit it. Other layers stay visible at 25% opacity.</p>
+            <p id="layers-overview-hint" class="layer-overview-hint" hidden>Select a layer to edit it.</p>
           </div>
         </div>
       </aside>
@@ -358,7 +358,7 @@ export function createEditor(env: EditorEnv): Editor {
       renderTitle();
       renderSaveState();
       env.onProjectChange();
-      if (change.discardedLocalEdit) toast('This project was changed in another window. Showing the latest version.');
+      if (change.discardedLocalEdit) toast('Updated with changes from another window.');
     },
     onRemoteDelete: record => { if (session) showRemoteBanner(record ? 'deleted' : 'removed'); },
   };
@@ -512,7 +512,7 @@ export function createEditor(env: EditorEnv): Editor {
     const scroll = panelBody.scrollTop;
     settingsPanel.innerHTML = settingsPanelMarkup(config, { open: current ?? openGroupsFor(config.template), lid: activeLid });
     element('layer-settings').innerHTML = config.template === 'inventory_tray' ? trayGroups(config, current ?? openGroupsFor(config.template), 'layers') : '';
-    sizePanel.innerHTML = sizePanelMarkup(config, { match, candidates: matchCandidates() });
+    sizePanel.innerHTML = sizePanelMarkup(config, { match, candidates: matchCandidates(), shared: !!session && projectLayers(session.config).length > 1 });
     const spacing = sizePanel.querySelector<HTMLElement>('[data-section=spacing]');
     if (spacing) spacing.hidden = activeLid;
     settingsPanel.dataset.template = config.template;
@@ -835,10 +835,12 @@ export function createEditor(env: EditorEnv): Editor {
     if (!tray) allLayers = false;
     if (session && tray) manager.innerHTML = layersPanelMarkup(workingProject(), activeLayer, allLayers, activeLid, fineQuery.matches);
     const many = !!session && projectLayers(session.config).length > 1;
-    element('layer-context').textContent = tray && session
-      ? allLayers ? `All layers · ${plural(projectLayers(session.config).length, 'tray')}${projectLayers(session.config).some(l => l.config.options.tray.lid) ? ' + lid' : ''}` : activeLid ? `${traySetItems(session.config).find(i => i.layerIndex === activeLayer && i.kind === 'lid')?.name ?? 'Lid'} · Editing lid` : `${projectLayers(session.config)[activeLayer].name} · Editing tray`
+    // Which part is being edited: only worth saying once there is more than one.
+    const stacked = tray && !!session && traySetItems(session.config).length > 1;
+    element('layer-context').textContent = stacked && session
+      ? allLayers ? `All layers · ${plural(projectLayers(session.config).length, 'tray')}${projectLayers(session.config).some(l => l.config.options.tray.lid) ? ' + lid' : ''}` : activeLid ? `Editing ${traySetItems(session.config).find(i => i.layerIndex === activeLayer && i.kind === 'lid')?.name ?? 'lid'}` : `Editing ${projectLayers(session.config)[activeLayer].name}`
       : '';
-    element('layer-context').hidden = !tray;
+    element('layer-context').hidden = !stacked;
     element('layers-overview-hint').hidden = !allLayers;
     showKeysButton.hidden = false;
 
@@ -1751,9 +1753,9 @@ export function createEditor(env: EditorEnv): Editor {
       case 'add': openKeyDialog(); break;
       case 'arrange-compactly': {
           const next = compactTray(config);
-          if (next === config) { toast('Keys already use the most compact layout found. Choose Columns in Tray settings to return to a grid.'); return; }
+          if (next === config) { toast('Keys are already arranged compactly.'); return; }
           changed(next, { render: 'keys' });
-          offerUndo('Keys rotated and arranged compactly. Choose Columns in Tray settings to return to a grid.');
+          offerUndo('Arranged compactly. Pick Columns in Tray settings to return to a grid.');
         break;
       }
       case 'show-error': focusFirstError(); break;

@@ -728,8 +728,11 @@ body[data-view=editor] .page { padding: 20px 24px; }
 .move-buttons { display: grid; flex: none; gap: 2px; }
 .key-row > .key-illustration { flex: none; width: 26px; height: 40px; }
 .key-hidden > .key-illustration { opacity: .35; }
-.key-row-main { display: grid; flex: 1; gap: 4px; min-width: 0; }
-.key-rotation { display: inline-flex; align-items: center; justify-self: start; gap: 5px; color: var(--text-2); font-size: 11px; padding: 3px 6px; border-radius: var(--r-xs); }
+.key-row-main { display: grid; flex: 1; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; align-items: center; min-width: 0; }
+.key-row-main > .key-model { grid-row: 1; grid-column: 1; }
+.key-row-main > .key-rotation { grid-row: 1; grid-column: 2; }
+.key-row-main > .key-label, .key-row-main > .field-error { grid-column: 1 / -1; }
+.key-rotation { display: inline-flex; align-items: center; justify-self: end; gap: 4px; margin-block: -3px; padding: 3px 6px; border-radius: var(--r-xs); color: var(--text-2); font-size: 11px; }
 .key-rotation:hover { color: var(--text); background: var(--surface-2); }
 .key-rotation .icon { width: 14px; height: 14px; }
 .layer-context { margin: 0; color: var(--text-2); font-size: 12px; }
@@ -945,7 +948,14 @@ input.key-label { width: 100%; height: 34px; padding: 0 8px; font-weight: 600; }
 .help-content ul { display: grid; gap: 4px; margin: 0; padding-left: 20px; }
 .help-install { margin-top: 4px; }
 #tray-lock-help-text { padding: 10px 12px; border-radius: var(--r-sm); background: var(--surface-2); font-size: 13px; line-height: 20px; }
-.about-version { font-variant-numeric: tabular-nums; }
+.shortcut-list { display: grid; gap: 6px; margin: 0; }
+.shortcut-list > div { display: grid; grid-template-columns: 80px auto; justify-content: start; align-items: center; }
+.shortcut-list dd { margin: 0; }
+kbd { display: inline-block; min-width: 24px; padding: 1px 7px; border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: var(--r-xs); background: var(--surface-2); color: var(--text); font: 500 12px/20px var(--font); text-align: center; }
+.about { padding-top: 16px; border-top: 1px solid var(--line); }
+.about-links { display: flex; flex-wrap: wrap; gap: 8px; }
+.about-links .button.quiet > .icon { width: 14px; height: 14px; color: var(--text-2); }
+.about-version { color: var(--text-2); font-size: 12px; line-height: 18px; font-variant-numeric: tabular-nums; }
 .about-update { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 #update-check-status { font-size: 13px; }
 .estimate-total { color: var(--text); font: 600 24px/32px var(--font); }
@@ -1134,7 +1144,7 @@ input.key-label { width: 100%; height: 34px; padding: 0 8px; font-weight: 600; }
   .key-row .key-model { grid-area: model; }
   .key-row .key-label { grid-area: label; }
   .key-row .field-error { grid-row: 3; grid-column: 3 / -1; }
-  .key-row .key-rotation { grid-row: 3; grid-column: 3 / -1; }
+  .key-row .key-rotation { grid-row: 3; grid-column: 3 / -1; justify-self: start; margin-block: 0; }
   .key-row .field-error:not([hidden]) { grid-row: 4; }
   .key-row > [data-occupied] { grid-area: eye; }
   .key-row > .delete-key { grid-area: remove; }
@@ -1166,6 +1176,12 @@ input.key-label { width: 100%; height: 34px; padding: 0 8px; font-weight: 600; }
 /* Mouse: the handle drags (and moves with Arrow Up/Down); compact ↑/↓ buttons stay visible for click-only, voice and screen-reader users. */
 @media (pointer: fine) {
   .move-buttons .icon-button.mini { width: 24px; height: 24px; }
+  .key-row > .icon-button { width: 32px; height: 32px; }
+  /* Shown on hover or focus, so the list reads as keys rather than controls. */
+  .key-row .move-buttons, .key-row > [data-occupied]:not(:focus-visible), .key-row > .delete-key { opacity: .55; transition: opacity var(--ease); }
+  .key-row .move-buttons { opacity: 0; }
+  .key-row:is(:hover, :focus-within) .move-buttons, .key-row:is(:hover, :focus-within) > [data-occupied], .key-row:is(:hover, :focus-within) > .delete-key { opacity: 1; }
+  .key-hidden > [data-occupied] { opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {

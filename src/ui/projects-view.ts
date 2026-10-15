@@ -247,7 +247,7 @@ export function createProjectsView(root: HTMLElement, deps: ProjectsViewDeps): P
       + `<span class="type-name">${esc(templateName(id))}${badge}${icon('chevron')}</span><span class="type-description">${esc(description)}</span></button>`;
     return `<section class="first-run">
       <h1 id="projects-title" tabindex="-1">Design a YubiKey organizer</h1>
-      <p class="first-run-lead">Pick a style to start. Everything runs in your browser and works offline.</p>
+      <p class="first-run-lead">Pick a style to start. Runs entirely in your browser.</p>
       ${bannersMarkup()}
       <div class="type-grid">
         ${card('inventory_tray', 'Flat pockets for many keys. Stackable, with an optional lid.')}
@@ -270,7 +270,7 @@ export function createProjectsView(root: HTMLElement, deps: ProjectsViewDeps): P
       ? `<div class="projects-search">${icon('search')}<input type="search" id="project-search" placeholder="Search projects" aria-label="Search projects" autocomplete="off" value="${esc(query)}"/></div>`
       : '';
     const safariNote = isIosBrowserTab()
-      ? '<p>Safari may clear this data after 7 days without a visit, so export or save project files to keep your designs. A Home Screen app keeps its own projects, separate from Safari: import your files there.</p>' : '';
+      ? '<p>Safari may clear this data after 7 days without a visit.</p>' : '';
     const now = new Date();
     const deletedRows = deleted.map(r => `<li class="deleted-row">
         <span class="deleted-name">${esc(r.name)}</span>
@@ -291,7 +291,7 @@ export function createProjectsView(root: HTMLElement, deps: ProjectsViewDeps): P
       ${search}
       <div id="project-results" class="project-results">${gridMarkup(highlight)}</div>
       <footer class="projects-footer">
-        <div class="projects-footer-text"><p>Saved in this browser only. Export all or save project files to back up; Import restores them.</p>${safariNote}</div>
+        <div class="projects-footer-text"><p>Projects are saved in this browser. Export them to back up or move to another device.</p>${safariNote}</div>
         ${projects.length ? `<button type="button" class="button secondary" data-projects-action="export-all">${icon('download')}Export all (.zip)</button>` : ''}
       </footer>
       ${deleted.length ? `<details class="recently-deleted"${deletedOpen ? ' open' : ''}>
